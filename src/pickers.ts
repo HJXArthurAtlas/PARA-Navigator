@@ -158,6 +158,41 @@ function parseColor(value: string): string | null {
   return probe.style.color ? probe.style.color : null;
 }
 
+/** Generic destructive-action confirmation. */
+export class ConfirmModal extends Modal {
+  private readonly message: string;
+  private readonly confirmText: string;
+  private readonly onConfirm: () => void;
+
+  constructor(app: App, message: string, confirmText: string, onConfirm: () => void) {
+    super(app);
+    this.message = message;
+    this.confirmText = confirmText;
+    this.onConfirm = onConfirm;
+  }
+
+  onOpen(): void {
+    const { contentEl, titleEl } = this;
+    titleEl.setText("确认操作");
+    contentEl.createEl("p", { text: this.message });
+    new Setting(contentEl)
+      .addButton((button) => button.setButtonText("取消").onClick(() => this.close()))
+      .addButton((button) =>
+        button
+          .setButtonText(this.confirmText)
+          .setWarning()
+          .onClick(() => {
+            this.onConfirm();
+            this.close();
+          })
+      );
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 /** Color picker with free-form input (any CSS color) plus an always-visible palette. */
 export class ColorPickerModal extends Modal {
   private readonly current: string | null;

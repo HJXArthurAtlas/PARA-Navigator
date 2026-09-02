@@ -1,7 +1,7 @@
 import { ItemView, Menu, Notice, FileSystemAdapter, TFile, TFolder, setIcon } from "obsidian";
 import type { TAbstractFile, WorkspaceLeaf } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
-import { ColorPickerModal, IconPickerModal, renderIconValue } from "./pickers";
+import { ColorPickerModal, ConfirmModal, IconPickerModal, renderIconValue } from "./pickers";
 import { DEFAULT_SETTINGS } from "./settings";
 import type { ParaFolderConfig } from "./settings";
 
@@ -237,7 +237,7 @@ export class NavigatorView extends ItemView {
 
     row.addEventListener("contextmenu", (evt) => {
       evt.preventDefault();
-      this.showFolderNodeMenu(evt, folder, hasChildren);
+      this.showFolderNodeMenu(evt, folder);
     });
 
     if (!hasChildren) {
@@ -338,14 +338,12 @@ export class NavigatorView extends ItemView {
     menu.showAtMouseEvent(evt);
   }
 
-  private showFolderNodeMenu(evt: MouseEvent, folder: TFolder, hasChildren: boolean): void {
+  private showFolderNodeMenu(evt: MouseEvent, folder: TFolder): void {
     const parentPath = folder.parent?.path ?? "";
     const menu = new Menu();
-    if (hasChildren) {
-      menu.addItem((item) =>
-        item.setTitle("创建下一级文件").setIcon("file-plus").onClick(() => this.startCreate(folder.path))
-      );
-    }
+    menu.addItem((item) =>
+      item.setTitle("创建下一级文件").setIcon("file-plus").onClick(() => this.startCreate(folder.path))
+    );
     menu.addItem((item) =>
       item.setTitle("在下方创建文件").setIcon("file-plus").onClick(() => this.startCreate(parentPath, folder.name))
     );
@@ -353,7 +351,11 @@ export class NavigatorView extends ItemView {
     menu.addItem((item) => item.setTitle("重命名").setIcon("pencil").onClick(() => this.startRename(folder.path)));
     menu.addItem((item) => item.setTitle("创建副本").setIcon("copy").onClick(() => void this.duplicateItem(folder)));
     menu.addItem((item) =>
-      item.setTitle("删除").setIcon("trash-2").setWarning(true).onClick(() => void this.app.fileManager.trashFile(folder))
+      item
+        .setTitle("删除")
+        .setIcon("trash-2")
+        .setWarning(true)
+        .onClick(() => this.confirmDelete(folder))
     );
     menu.addSeparator();
     menu.addItem((item) =>
@@ -379,6 +381,14 @@ export class NavigatorView extends ItemView {
   private showLeafMenu(evt: MouseEvent, file: TFile): void {
     const parentPath = file.parent?.path ?? "";
     const menu = new Menu();
+    if (file.extension === "md") {
+      menu.addItem((item) =>
+        item
+          .setTitle("创建下一级文件")
+          .setIcon("file-plus")
+          .onClick(() => void this.startCreateUnderLeaf(file))
+      );
+    }
     menu.addItem((item) =>
       item.setTitle("在下方创建文件").setIcon("file-plus").onClick(() => this.startCreate(parentPath, file.name))
     );
@@ -386,7 +396,11 @@ export class NavigatorView extends ItemView {
     menu.addItem((item) => item.setTitle("重命名").setIcon("pencil").onClick(() => this.startRename(file.path)));
     menu.addItem((item) => item.setTitle("创建副本").setIcon("copy").onClick(() => void this.duplicateItem(file)));
     menu.addItem((item) =>
-      item.setTitle("删除").setIcon("trash-2").setWarning(true).onClick(() => void this.app.fileManager.trashFile(file))
+      item
+        .setTitle("删除")
+        .setIcon("trash-2")
+        .setWarning(true)
+        .onClick(() => this.confirmDelete(file))
     );
     menu.addSeparator();
     menu.addItem((item) =>
@@ -407,6 +421,24 @@ export class NavigatorView extends ItemView {
     );
     this.addAppearanceItems(menu, file.path, this.nodeIconAccessor(file.path));
     menu.showAtMouseEvent(evt);
+  }
+
+  /** Delete goes through a confirmation; the file still lands in the system trash. */
+  private confirmDelete(item: TAbstractFile): void {
+    const detail = item instanceof TFolder ? "目录及其全部内容" : "文件";
+    new ConfirmModal(
+      this.app,
+      `确定删除${detail}“${item.name}”吗？将移入系统回收站。`,
+      "删除",
+      () => void this.app.fileManager.trashFile(item)
+    ).open();
+  }
+
+  /** Converts a leaf note into a folder note, then offers inline child creation. */
+  private async startCreateUnderLeaf(file: TFile): Promise<void> {
+    const folder = await this.plugin.convertLeafToFolderNote(file);
+    if (!folder) return;
+    this.startCreate(folder.path);
   }
 
   /** Icon accessor backed by settings.nodeIcons for sub-level nodes. */
