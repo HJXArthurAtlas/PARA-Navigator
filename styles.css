@@ -72,6 +72,11 @@
   flex: 1;
 }
 
+.para-emoji-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
 .para-icon-choice {
   display: inline-flex;
   margin-right: var(--size-4-2);

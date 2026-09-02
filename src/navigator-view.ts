@@ -1,7 +1,7 @@
 import { ItemView, Menu, Notice, FileSystemAdapter, TFile, TFolder, setIcon } from "obsidian";
 import type { TAbstractFile, WorkspaceLeaf } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
-import { ColorPickerModal, IconPickerModal } from "./pickers";
+import { ColorPickerModal, IconPickerModal, renderIconValue } from "./pickers";
 import { DEFAULT_SETTINGS } from "./settings";
 import type { ParaFolderConfig } from "./settings";
 
@@ -113,7 +113,7 @@ export class NavigatorView extends ItemView {
     );
 
     const icon = header.createSpan("para-folder-icon");
-    setIcon(icon, config.icon);
+    renderIconValue(icon, config.icon);
 
     const nameEl = header.createSpan({ cls: "para-folder-name", text: config.name });
     const nameColor = this.plugin.settings.nameColors[config.path];
@@ -432,7 +432,7 @@ export class NavigatorView extends ItemView {
     const iconId = this.plugin.settings.nodeIcons[path];
     if (iconId) {
       const iconEl = row.createSpan("para-tree-icon");
-      setIcon(iconEl, iconId);
+      renderIconValue(iconEl, iconId);
     }
     const labelEl = row.createSpan({ cls: "para-tree-label", text: label });
     const color = this.plugin.settings.nameColors[path];

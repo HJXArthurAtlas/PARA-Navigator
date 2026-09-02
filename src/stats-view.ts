@@ -1,6 +1,7 @@
 import { ItemView, MarkdownRenderer, TFolder, moment, setIcon } from "obsidian";
 import type { TFile, WorkspaceLeaf, ViewStateResult } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
+import { renderIconValue } from "./pickers";
 
 export const VIEW_TYPE_STATS = "para-folder-stats";
 
@@ -101,7 +102,7 @@ export class StatsView extends ItemView {
 
     const header = container.createDiv("para-stats-header");
     const iconEl = header.createSpan("para-stats-icon");
-    setIcon(iconEl, icon ?? "folder");
+    renderIconValue(iconEl, icon ?? "folder");
     header.createEl("h2", { text: name ?? folderPath });
     const refreshIcon = header.createSpan("para-stats-refresh");
     refreshIcon.setAttr("role", "button");
