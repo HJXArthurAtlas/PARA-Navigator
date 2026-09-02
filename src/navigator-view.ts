@@ -226,6 +226,9 @@ export class NavigatorView extends ItemView {
     const hasChildren = folder.children.some(
       (child) => child instanceof TFolder || child.path !== folderNotePath
     );
+    // Childless nodes still render the children container while a new note is
+    // being created inside them — otherwise the inline input has nowhere to go.
+    const creatingHere = this.creating?.basePath === folder.path;
     const open = () => void this.openFolderNote(folder);
     row.addEventListener("click", open);
     row.addEventListener("keydown", (evt) => {
@@ -240,7 +243,7 @@ export class NavigatorView extends ItemView {
       this.showFolderNodeMenu(evt, folder);
     });
 
-    if (!hasChildren) {
+    if (!hasChildren && !creatingHere) {
       chevron.addClass("para-chevron-hidden");
       return;
     }
