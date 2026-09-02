@@ -152,7 +152,9 @@ export class NavigatorView extends ItemView {
     });
 
     if (exists) {
-      this.addIconButton(header, "plus", `New note in ${config.name}`, () => this.startCreate(config.path));
+      this.addIconButton(header, "bar-chart-3", `Open ${config.name} dashboard`, () =>
+        void this.plugin.openFolderDashboard(config)
+      );
     }
     header.addEventListener("contextmenu", (evt) => {
       if (!exists) return;
@@ -161,17 +163,14 @@ export class NavigatorView extends ItemView {
     });
 
     const openNode = () => {
-      // Row click toggles the tree and opens the dashboard, which acts as
-      // the top-level entry's content — there is no folder note here.
-      if (exists) {
-        if (this.collapsed.has(config.id)) {
-          this.collapsed.delete(config.id);
-        } else {
-          this.collapsed.add(config.id);
-        }
-        this.render();
+      // Row click only toggles the tree; the dashboard opens via its own icon.
+      if (!exists) return;
+      if (this.collapsed.has(config.id)) {
+        this.collapsed.delete(config.id);
+      } else {
+        this.collapsed.add(config.id);
       }
-      void this.plugin.openFolderDashboard(config);
+      this.render();
     };
     header.addEventListener("click", openNode);
     header.addEventListener("keydown", (evt) => {
@@ -232,7 +231,6 @@ export class NavigatorView extends ItemView {
       }
     });
 
-    this.addIconButton(row, "plus", `New note in ${folder.name}`, () => this.startCreate(folder.path));
     row.addEventListener("contextmenu", (evt) => {
       evt.preventDefault();
       this.showFolderNodeMenu(evt, folder, hasChildren);
@@ -286,7 +284,6 @@ export class NavigatorView extends ItemView {
 
   /** A plain file node. Markdown leaves can be converted into folder notes. */
   private renderLeafNode(parent: HTMLElement, file: TFile, depth: number): void {
-    const isMarkdown = file.extension === "md";
     if (this.renaming === file.path) {
       parent.appendChild(this.renderRenameInput(file.basename, file.path));
       return;
@@ -306,11 +303,6 @@ export class NavigatorView extends ItemView {
       }
     });
 
-    if (isMarkdown) {
-      this.addIconButton(row, "plus", `New note under ${file.basename}`, () =>
-        void this.startCreateUnderLeaf(file)
-      );
-    }
     row.addEventListener("contextmenu", (evt) => {
       evt.preventDefault();
       this.showLeafMenu(evt, file);
@@ -320,6 +312,12 @@ export class NavigatorView extends ItemView {
     const menu = new Menu();
     menu.addItem((item) =>
       item.setTitle("创建下一级文件").setIcon("file-plus").onClick(() => this.startCreate(config.path))
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle("打开看板")
+        .setIcon("bar-chart-3")
+        .onClick(() => void this.plugin.openFolderDashboard(config))
     );
     menu.showAtMouseEvent(evt);
   }
@@ -339,7 +337,7 @@ export class NavigatorView extends ItemView {
     menu.addItem((item) => item.setTitle("重命名").setIcon("pencil").onClick(() => this.startRename(folder.path)));
     menu.addItem((item) => item.setTitle("创建副本").setIcon("copy").onClick(() => void this.duplicateItem(folder)));
     menu.addItem((item) =>
-      item.setTitle("删除").setIcon("trash-2").onClick(() => void this.app.fileManager.trashFile(folder))
+      item.setTitle("删除").setIcon("trash-2").setWarning(true).onClick(() => void this.app.fileManager.trashFile(folder))
     );
     menu.addSeparator();
     menu.addItem((item) =>
@@ -371,7 +369,7 @@ export class NavigatorView extends ItemView {
     menu.addItem((item) => item.setTitle("重命名").setIcon("pencil").onClick(() => this.startRename(file.path)));
     menu.addItem((item) => item.setTitle("创建副本").setIcon("copy").onClick(() => void this.duplicateItem(file)));
     menu.addItem((item) =>
-      item.setTitle("删除").setIcon("trash-2").onClick(() => void this.app.fileManager.trashFile(file))
+      item.setTitle("删除").setIcon("trash-2").setWarning(true).onClick(() => void this.app.fileManager.trashFile(file))
     );
     menu.addSeparator();
     menu.addItem((item) =>
@@ -469,13 +467,6 @@ export class NavigatorView extends ItemView {
     this.render();
     const input = this.containerEl.querySelector<HTMLInputElement>(".para-tree-input");
     input?.focus();
-  }
-
-  /** Converts a leaf note into a folder note, then offers inline child creation. */
-  private async startCreateUnderLeaf(file: TFile): Promise<void> {
-    const folder = await this.plugin.convertLeafToFolderNote(file);
-    if (!folder) return;
-    this.startCreate(folder.path);
   }
 
   private async createAndReveal(basePath: string, name: string, afterName?: string): Promise<void> {

@@ -103,13 +103,20 @@ export class StatsView extends ItemView {
     const iconEl = header.createSpan("para-stats-icon");
     setIcon(iconEl, icon ?? "folder");
     header.createEl("h2", { text: name ?? folderPath });
-    header.createDiv({ cls: "para-stats-path", text: folderPath });
+    const refreshIcon = header.createSpan("para-stats-refresh");
+    refreshIcon.setAttr("role", "button");
+    refreshIcon.setAttr("tabindex", "0");
+    refreshIcon.setAttr("aria-label", "Refresh statistics");
+    setIcon(refreshIcon, "refresh-cw");
+    refreshIcon.addEventListener("click", () => void this.refresh());
+    refreshIcon.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" || evt.key === " ") {
+        evt.preventDefault();
+        void this.refresh();
+      }
+    });
 
-    const refreshButton = header.createEl("button", { cls: "para-stats-refresh" });
-    refreshButton.setAttr("aria-label", "Refresh statistics");
-    refreshButton.setAttr("data-tooltip-position", "top");
-    setIcon(refreshButton, "refresh-cw");
-    refreshButton.addEventListener("click", () => void this.refresh());
+    header.createDiv({ cls: "para-stats-path", text: folderPath });
 
     const cards = container.createDiv("para-stats-cards");
     this.renderCard(cards, "file-text", "Notes", String(stats.noteCount));

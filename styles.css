@@ -233,15 +233,9 @@
 }
 
 .para-stats-refresh {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 32px;
-  min-height: 32px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
+  color: var(--text-faint);
   cursor: pointer;
   border-radius: var(--radius-s);
 }
