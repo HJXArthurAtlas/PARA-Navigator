@@ -62,12 +62,12 @@ export class IconPickerModal extends FuzzySuggestModal<string> {
   }
 
   getItems(): string[] {
-    return [...EMOJIS.map(([glyph]) => glyph), ...getIconIds()];
+    return [...getIconIds(), ...EMOJIS.map(([glyph]) => glyph)];
   }
 
   getItemText(item: string): string {
     const emoji = EMOJIS.find(([glyph]) => glyph === item);
-    if (emoji) return `${emoji[0]} ${emoji[1]}`;
+    if (emoji) return emoji[1];
     return item.replace(/^lucide-/, "");
   }
 
