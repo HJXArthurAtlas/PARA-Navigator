@@ -15,7 +15,7 @@ export class NavigatorView extends ItemView {
   /** Pending inline creation target, if any */
   private creating: { basePath: string; kind: CreateKind } | null = null;
   /** Row currently being dragged, if any */
-  private dragged: { topLevel: boolean; parentPath: string; name: string } | null = null;
+  private dragged: { topLevel: boolean; parentPath: string; name: string; path: string } | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: ParaNavigatorPlugin) {
     super(leaf);
@@ -109,7 +109,7 @@ export class NavigatorView extends ItemView {
     if (!exists) header.addClass("para-folder-missing");
     header.setAttr("draggable", "true");
     header.addEventListener("dragstart", (evt) => {
-      this.dragged = { topLevel: true, parentPath: "", name: config.id };
+      this.dragged = { topLevel: true, parentPath: "", name: config.id, path: config.path };
       evt.dataTransfer?.setData("text/plain", config.id);
       header.addClass("para-dragging");
     });
@@ -119,14 +119,25 @@ export class NavigatorView extends ItemView {
       this.clearDragIndicators();
     });
     header.addEventListener("dragover", (evt) => {
-      if (!this.dragged?.topLevel) return;
-      evt.preventDefault();
-      this.markDropTarget(header, this.isBeforeMidpoint(evt, header));
+      const dragged = this.dragged;
+      if (!dragged) return;
+      if (dragged.topLevel) {
+        evt.preventDefault();
+        this.markDropTarget(header, this.isBeforeMidpoint(evt, header));
+      } else if (this.canMoveInto(dragged.path, config.path)) {
+        evt.preventDefault();
+        this.markDropInto(header);
+      }
     });
     header.addEventListener("drop", (evt) => {
-      if (!this.dragged?.topLevel) return;
+      const dragged = this.dragged;
+      if (!dragged) return;
       evt.preventDefault();
-      void this.reorderTopLevel(this.dragged.name, config.id, this.isBeforeMidpoint(evt, header));
+      if (dragged.topLevel) {
+        void this.reorderTopLevel(dragged.name, config.id, this.isBeforeMidpoint(evt, header));
+      } else if (this.canMoveInto(dragged.path, config.path)) {
+        void this.moveItem(dragged.path, config.path);
+      }
     });
     if (exists) {
       const add = header.createSpan("para-add-button");
@@ -201,7 +212,7 @@ export class NavigatorView extends ItemView {
     for (const child of children) {
       if (child instanceof TFolder) {
         const row = this.renderRow(parent, child.name, depth, `Folder ${child.name}`);
-        this.attachRowDrag(row, folder.path, child.name);
+        this.attachRowDrag(row, folder.path, child.name, child.path, true);
         const isExpanded = this.expandedSubfolders.has(child.path);
         row.setAttr("aria-expanded", String(isExpanded));
         const body = parent.createDiv("para-tree-children");
@@ -248,7 +259,7 @@ export class NavigatorView extends ItemView {
         });
       } else if (child instanceof TFile && child.extension === "md") {
         const row = this.renderRow(parent, child.basename, depth, `Open ${child.basename}`);
-        this.attachRowDrag(row, folder.path, child.name);
+        this.attachRowDrag(row, folder.path, child.name, child.path, false);
         const open = () => void this.app.workspace.getLeaf("tab").openFile(child);
         row.addEventListener("click", open);
         row.addEventListener("keydown", (evt) => {
@@ -364,10 +375,10 @@ export class NavigatorView extends ItemView {
     });
   }
 
-  private attachRowDrag(row: HTMLElement, parentPath: string, name: string): void {
+  private attachRowDrag(row: HTMLElement, parentPath: string, name: string, path: string, isFolder: boolean): void {
     row.setAttr("draggable", "true");
     row.addEventListener("dragstart", (evt) => {
-      this.dragged = { topLevel: false, parentPath, name };
+      this.dragged = { topLevel: false, parentPath, name, path };
       evt.dataTransfer?.setData("text/plain", name);
       evt.stopPropagation();
       row.addClass("para-dragging");
@@ -378,17 +389,80 @@ export class NavigatorView extends ItemView {
       this.clearDragIndicators();
     });
     row.addEventListener("dragover", (evt) => {
-      if (!this.dragged || this.dragged.topLevel || this.dragged.parentPath !== parentPath) return;
+      const dragged = this.dragged;
+      if (!dragged || dragged.topLevel) return;
+      const sameParent = dragged.parentPath === parentPath;
+      const canDropInto = isFolder && this.canMoveInto(dragged.path, path);
+      if (!sameParent && !canDropInto) return;
       evt.preventDefault();
       evt.stopPropagation();
-      this.markDropTarget(row, this.isBeforeMidpoint(evt, row));
+      const zone = this.dropZone(evt, row, sameParent && canDropInto);
+      if (zone === "into") {
+        this.markDropInto(row);
+      } else if (sameParent) {
+        this.markDropTarget(row, zone === "before");
+      } else {
+        this.markDropInto(row);
+      }
     });
     row.addEventListener("drop", (evt) => {
-      if (!this.dragged || this.dragged.topLevel || this.dragged.parentPath !== parentPath) return;
+      const dragged = this.dragged;
+      if (!dragged || dragged.topLevel) return;
+      const sameParent = dragged.parentPath === parentPath;
+      const canDropInto = isFolder && this.canMoveInto(dragged.path, path);
+      if (!sameParent && !canDropInto) return;
       evt.preventDefault();
       evt.stopPropagation();
-      void this.reorderChildren(parentPath, this.dragged.name, name, this.isBeforeMidpoint(evt, row));
+      const zone = this.dropZone(evt, row, sameParent && canDropInto);
+      if (zone === "into" || !sameParent) {
+        void this.moveItem(dragged.path, path);
+      } else {
+        void this.reorderChildren(parentPath, dragged.name, name, zone === "before");
+      }
     });
+  }
+
+  /** True when draggedPath may be moved into targetFolderPath. */
+  private canMoveInto(draggedPath: string, targetFolderPath: string): boolean {
+    if (draggedPath === targetFolderPath) return false;
+    if (targetFolderPath.startsWith(`${draggedPath}/`)) return false;
+    const draggedParent = draggedPath.slice(0, draggedPath.lastIndexOf("/"));
+    return draggedParent !== targetFolderPath;
+  }
+
+  /** Middle zone of a folder row means "move into" when allowed. */
+  private dropZone(evt: DragEvent, el: HTMLElement, allowInto: boolean): "before" | "into" | "after" {
+    if (!allowInto) return this.isBeforeMidpoint(evt, el) ? "before" : "after";
+    const rect = el.getBoundingClientRect();
+    const ratio = (evt.clientY - rect.top) / rect.height;
+    if (ratio < 0.25) return "before";
+    if (ratio > 0.75) return "after";
+    return "into";
+  }
+
+  private markDropInto(el: HTMLElement): void {
+    this.clearDragIndicators();
+    el.addClass("para-drop-into");
+  }
+
+  /** Moves a file or folder into another folder, updating links vault-wide. */
+  private async moveItem(draggedPath: string, targetFolderPath: string): Promise<void> {
+    const item = this.app.vault.getAbstractFileByPath(draggedPath);
+    if (!item) return;
+    const newPath = `${targetFolderPath}/${item.name}`;
+    if (this.app.vault.getAbstractFileByPath(newPath)) {
+      new Notice(`Already exists: ${newPath}`);
+      return;
+    }
+    const parentPath = draggedPath.slice(0, draggedPath.lastIndexOf("/"));
+    const order = this.plugin.settings.sortOrder[parentPath];
+    if (order) {
+      this.plugin.settings.sortOrder[parentPath] = order.filter((name) => name !== item.name);
+      await this.plugin.saveSettings();
+    }
+    await this.app.fileManager.renameFile(item, newPath);
+    this.expandedSubfolders.add(targetFolderPath);
+    new Notice(`Moved to ${newPath}`);
   }
 
   private isBeforeMidpoint(evt: DragEvent, el: HTMLElement): boolean {
@@ -403,8 +477,8 @@ export class NavigatorView extends ItemView {
 
   private clearDragIndicators(): void {
     this.containerEl
-      .querySelectorAll(".para-drop-before, .para-drop-after")
-      .forEach((el) => el.removeClass("para-drop-before", "para-drop-after"));
+      .querySelectorAll(".para-drop-before, .para-drop-after, .para-drop-into")
+      .forEach((el) => el.removeClass("para-drop-before", "para-drop-after", "para-drop-into"));
   }
 
   private async reorderChildren(parentPath: string, draggedName: string, targetName: string, before: boolean): Promise<void> {
