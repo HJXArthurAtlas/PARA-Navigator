@@ -154,9 +154,6 @@ export class NavigatorView extends ItemView {
 
     if (exists) {
       this.addIconButton(header, "plus", `New note in ${config.name}`, () => this.startCreate(config.path));
-      this.addIconButton(header, "chart-column", `Open dashboard for ${config.name}`, () =>
-        void this.plugin.openFolderDashboard(config)
-      );
     }
 
     const toggle = () => {
@@ -184,15 +181,12 @@ export class NavigatorView extends ItemView {
     });
 
     const openNode = () => {
-      if (exists) {
-        if (this.collapsed.has(config.id)) {
-          this.collapsed.delete(config.id);
-          this.render();
-        }
-        void this.openFolderNote(abstract);
-      } else {
-        void this.plugin.openFolderDashboard(config);
+      if (exists && this.collapsed.has(config.id)) {
+        this.collapsed.delete(config.id);
+        this.render();
       }
+      // Top-level PARA entries have no folder note — the dashboard is their content.
+      void this.plugin.openFolderDashboard(config);
     };
     header.addEventListener("click", openNode);
     header.addEventListener("keydown", (evt) => {
