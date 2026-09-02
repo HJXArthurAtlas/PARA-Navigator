@@ -8,6 +8,8 @@ export const VIEW_TYPE_NAVIGATOR = "para-navigator";
 export class NavigatorView extends ItemView {
   private readonly plugin: ParaNavigatorPlugin;
   private readonly collapsed = new Set<string>();
+  /** Paths of expanded subfolders — survives full re-renders */
+  private readonly expandedSubfolders = new Set<string>();
 
   constructor(leaf: WorkspaceLeaf, plugin: ParaNavigatorPlugin) {
     super(leaf);
@@ -157,19 +159,25 @@ export class NavigatorView extends ItemView {
     for (const child of children) {
       if (child instanceof TFolder) {
         const row = this.renderRow(parent, child.name, depth, `Folder ${child.name}`);
-        row.setAttr("aria-expanded", "false");
+        const isExpanded = this.expandedSubfolders.has(child.path);
+        row.setAttr("aria-expanded", String(isExpanded));
         const body = parent.createDiv("para-tree-children");
-        body.hide();
-        let expanded = false;
+        if (isExpanded) {
+          this.renderTree(body, child, depth + 1);
+        } else {
+          body.hide();
+        }
         const toggle = () => {
-          expanded = !expanded;
-          if (expanded) {
+          if (this.expandedSubfolders.has(child.path)) {
+            this.expandedSubfolders.delete(child.path);
+            body.hide();
+            row.setAttr("aria-expanded", "false");
+          } else {
+            this.expandedSubfolders.add(child.path);
             if (body.childElementCount === 0) this.renderTree(body, child, depth + 1);
             body.show();
-          } else {
-            body.hide();
+            row.setAttr("aria-expanded", "true");
           }
-          row.setAttr("aria-expanded", String(expanded));
         };
         row.addEventListener("click", toggle);
         row.addEventListener("keydown", (evt) => {
