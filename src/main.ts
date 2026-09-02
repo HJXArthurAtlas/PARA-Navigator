@@ -70,6 +70,8 @@ export default class ParaNavigatorPlugin extends Plugin {
       .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
     if (existing) {
       this.app.workspace.revealLeaf(existing);
+      // revealLeaf alone does not reliably activate already-visible leaves.
+      this.app.workspace.setActiveLeaf(existing, { focus: true });
     } else {
       void this.app.workspace.getLeaf("tab").openFile(file);
     }
@@ -178,6 +180,15 @@ export default class ParaNavigatorPlugin extends Plugin {
   }
 
   async openFolderDashboard(folder: ParaFolderConfig): Promise<void> {
+    // Focus the existing dashboard tab for this folder instead of duplicating it.
+    const existing = this.app.workspace
+      .getLeavesOfType(VIEW_TYPE_STATS)
+      .find((leaf) => leaf.getViewState().state?.folderPath === folder.path);
+    if (existing) {
+      this.app.workspace.revealLeaf(existing);
+      this.app.workspace.setActiveLeaf(existing, { focus: true });
+      return;
+    }
     // Unmapped folders are allowed through — the dashboard shows guidance
     // and a user-initiated "create folder" action instead of dead-ends.
     const leaf = this.app.workspace.getLeaf("tab");
