@@ -26,7 +26,7 @@ export class NavigatorView extends ItemView {
   /** Paths of expanded nodes — survives full re-renders */
   private readonly expandedSubfolders = new Set<string>();
   /** Pending inline note creation target folder path, if any */
-  private creating: { basePath: string; afterName?: string } | null = null;
+  private creating: { basePath: string; } | null = null;
   /** Path of the node being renamed inline, if any */
   private renaming: string | null = null;
   /** Row currently being dragged, if any */
@@ -342,13 +342,9 @@ export class NavigatorView extends ItemView {
   }
 
   private showFolderNodeMenu(evt: MouseEvent, folder: TFolder): void {
-    const parentPath = folder.parent?.path ?? "";
     const menu = new Menu();
     menu.addItem((item) =>
       item.setTitle("创建下一级文件").setIcon("file-plus").onClick(() => this.startCreate(folder.path))
-    );
-    menu.addItem((item) =>
-      item.setTitle("在下方创建文件").setIcon("file-plus").onClick(() => this.startCreate(parentPath, folder.name))
     );
     menu.addSeparator();
     menu.addItem((item) => item.setTitle("重命名").setIcon("pencil").onClick(() => this.startRename(folder.path)));
@@ -382,7 +378,6 @@ export class NavigatorView extends ItemView {
   }
 
   private showLeafMenu(evt: MouseEvent, file: TFile): void {
-    const parentPath = file.parent?.path ?? "";
     const menu = new Menu();
     if (file.extension === "md") {
       menu.addItem((item) =>
@@ -392,9 +387,6 @@ export class NavigatorView extends ItemView {
           .onClick(() => void this.startCreateUnderLeaf(file))
       );
     }
-    menu.addItem((item) =>
-      item.setTitle("在下方创建文件").setIcon("file-plus").onClick(() => this.startCreate(parentPath, file.name))
-    );
     menu.addSeparator();
     menu.addItem((item) => item.setTitle("重命名").setIcon("pencil").onClick(() => this.startRename(file.path)));
     menu.addItem((item) => item.setTitle("创建副本").setIcon("copy").onClick(() => void this.duplicateItem(file)));
@@ -566,7 +558,7 @@ export class NavigatorView extends ItemView {
         const basePath = this.creating;
         this.creating = null;
         if (basePath && value.length > 0) {
-          void this.createAndReveal(basePath.basePath, value, basePath.afterName);
+          void this.createAndReveal(basePath.basePath, value);
         } else {
           this.render();
         }
@@ -581,8 +573,8 @@ export class NavigatorView extends ItemView {
     return row;
   }
 
-  private startCreate(basePath: string, afterName?: string): void {
-    this.creating = { basePath, afterName };
+  private startCreate(basePath: string): void {
+    this.creating = { basePath };
     // Make sure the target's children are visible so the input row shows.
     this.expandedSubfolders.add(basePath);
     const topLevel = this.plugin.settings.folders.find((folder) => folder.path === basePath);
@@ -592,23 +584,9 @@ export class NavigatorView extends ItemView {
     input?.focus();
   }
 
-  private async createAndReveal(basePath: string, name: string, afterName?: string): Promise<void> {
+  private async createAndReveal(basePath: string, name: string): Promise<void> {
     const file = await this.plugin.createNote(basePath, name);
     if (!file) return;
-
-    // "在下方创建文件": pin the new note right after the sibling in custom order.
-    if (afterName) {
-      const parent = this.app.vault.getAbstractFileByPath(basePath);
-      if (parent instanceof TFolder) {
-        const names = this.sortChildren(parent.children, basePath)
-          .map((child) => child.name)
-          .filter((entry) => entry !== file.name);
-        const index = names.indexOf(afterName);
-        names.splice(index >= 0 ? index + 1 : names.length, 0, file.name);
-        this.plugin.settings.sortOrder[basePath] = names;
-        await this.plugin.saveSettings();
-      }
-    }
 
     this.collapsed.delete(
       this.plugin.settings.folders.find((folder) => folder.path === basePath)?.id ?? ""
