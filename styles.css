@@ -156,6 +156,15 @@
   flex: 1;
 }
 
+.para-color-gradient {
+  flex: 0 0 auto;
+}
+
+.para-color-gradient input {
+  width: 76px;
+  text-align: center;
+}
+
 .para-color-input.is-invalid {
   border-color: var(--text-error);
 }

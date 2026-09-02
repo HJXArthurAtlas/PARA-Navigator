@@ -1,4 +1,4 @@
-import { App, Modal, Setting, getIconIds, setIcon } from "obsidian";
+import { App, ColorComponent, Modal, Setting, getIconIds, setIcon } from "obsidian";
 /** Common emojis offered alongside lucide icons: [glyph, search keywords]. */
 const EMOJIS: [string, string][] = [
   ["😀", "grinning"], ["😄", "smile"], ["😂", "joy"], ["😊", "blush"], ["😍", "heart-eyes"],
@@ -201,7 +201,13 @@ export class ColorPickerModal extends Modal {
       preview.style.backgroundColor = parsed ?? "transparent";
       input.toggleClass("is-invalid", next.length > 0 && parsed === null);
       confirm.components[0].setDisabled(parsed === null);
+      if (parsed && /^#[0-9a-fA-F]{6}$/.test(parsed)) gradientPicker?.setValue(parsed);
     };
+
+    // Native gradient picker (hex only) stays in sync with the free-form input.
+    const gradientWrap = inputRow.createDiv("para-color-gradient");
+    const gradientPicker = new ColorComponent(gradientWrap);
+    gradientPicker.setValue("#c8a26a").onChange((hex) => apply(hex));
 
     input.addEventListener("input", () => apply(input.value));
     input.addEventListener("keydown", (evt) => {
