@@ -1,5 +1,6 @@
 import { ItemView, Menu, Notice, TFile, TFolder, setIcon } from "obsidian";
 import type { WorkspaceLeaf } from "obsidian";
+import type { TAbstractFile } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
 import type { CreateKind } from "./main";
 import type { ParaFolderConfig } from "./settings";
@@ -13,6 +14,8 @@ export class NavigatorView extends ItemView {
   private readonly expandedSubfolders = new Set<string>();
   /** Pending inline creation target, if any */
   private creating: { basePath: string; kind: CreateKind } | null = null;
+  /** Row currently being dragged, if any */
+  private dragged: { topLevel: boolean; parentPath: string; name: string } | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: ParaNavigatorPlugin) {
     super(leaf);
@@ -104,6 +107,27 @@ export class NavigatorView extends ItemView {
     header.createSpan({ cls: "para-folder-count", text: String(noteCount) });
 
     if (!exists) header.addClass("para-folder-missing");
+    header.setAttr("draggable", "true");
+    header.addEventListener("dragstart", (evt) => {
+      this.dragged = { topLevel: true, parentPath: "", name: config.id };
+      evt.dataTransfer?.setData("text/plain", config.id);
+      header.addClass("para-dragging");
+    });
+    header.addEventListener("dragend", () => {
+      this.dragged = null;
+      header.removeClass("para-dragging");
+      this.clearDragIndicators();
+    });
+    header.addEventListener("dragover", (evt) => {
+      if (!this.dragged?.topLevel) return;
+      evt.preventDefault();
+      this.markDropTarget(header, this.isBeforeMidpoint(evt, header));
+    });
+    header.addEventListener("drop", (evt) => {
+      if (!this.dragged?.topLevel) return;
+      evt.preventDefault();
+      void this.reorderTopLevel(this.dragged.name, config.id, this.isBeforeMidpoint(evt, header));
+    });
     if (exists) {
       const add = header.createSpan("para-add-button");
       setIcon(add, "plus");
@@ -172,15 +196,12 @@ export class NavigatorView extends ItemView {
   }
 
   private renderTree(parent: HTMLElement, folder: TFolder, depth: number): void {
-    const children = folder.children.slice().sort((a, b) => {
-      const aFolder = a instanceof TFolder ? 0 : 1;
-      const bFolder = b instanceof TFolder ? 0 : 1;
-      return aFolder - bFolder || a.name.localeCompare(b.name);
-    });
+    const children = this.sortChildren(folder.children, folder.path);
 
     for (const child of children) {
       if (child instanceof TFolder) {
         const row = this.renderRow(parent, child.name, depth, `Folder ${child.name}`);
+        this.attachRowDrag(row, folder.path, child.name);
         const isExpanded = this.expandedSubfolders.has(child.path);
         row.setAttr("aria-expanded", String(isExpanded));
         const body = parent.createDiv("para-tree-children");
@@ -227,6 +248,7 @@ export class NavigatorView extends ItemView {
         });
       } else if (child instanceof TFile && child.extension === "md") {
         const row = this.renderRow(parent, child.basename, depth, `Open ${child.basename}`);
+        this.attachRowDrag(row, folder.path, child.name);
         const open = () => void this.app.workspace.getLeaf("tab").openFile(child);
         row.addEventListener("click", open);
         row.addEventListener("keydown", (evt) => {
@@ -321,6 +343,96 @@ export class NavigatorView extends ItemView {
     row.setAttr("aria-label", ariaLabel);
     row.createSpan({ cls: "para-tree-label", text: label });
     return row;
+  }
+  /** Orders children by the user's custom order, unlisted items appended by default sort. */
+  private sortChildren(children: TAbstractFile[], parentPath: string): TAbstractFile[] {
+    const defaultCompare = (a: TAbstractFile, b: TAbstractFile) => {
+      const aFolder = a instanceof TFolder ? 0 : 1;
+      const bFolder = b instanceof TFolder ? 0 : 1;
+      return aFolder - bFolder || a.name.localeCompare(b.name);
+    };
+    const stored = this.plugin.settings.sortOrder[parentPath];
+    if (!stored || stored.length === 0) return children.slice().sort(defaultCompare);
+    const rank = new Map(stored.map((name, index) => [name, index]));
+    return children.slice().sort((a, b) => {
+      const rankA = rank.get(a.name);
+      const rankB = rank.get(b.name);
+      if (rankA !== undefined && rankB !== undefined) return rankA - rankB;
+      if (rankA !== undefined) return -1;
+      if (rankB !== undefined) return 1;
+      return defaultCompare(a, b);
+    });
+  }
+
+  private attachRowDrag(row: HTMLElement, parentPath: string, name: string): void {
+    row.setAttr("draggable", "true");
+    row.addEventListener("dragstart", (evt) => {
+      this.dragged = { topLevel: false, parentPath, name };
+      evt.dataTransfer?.setData("text/plain", name);
+      evt.stopPropagation();
+      row.addClass("para-dragging");
+    });
+    row.addEventListener("dragend", () => {
+      this.dragged = null;
+      row.removeClass("para-dragging");
+      this.clearDragIndicators();
+    });
+    row.addEventListener("dragover", (evt) => {
+      if (!this.dragged || this.dragged.topLevel || this.dragged.parentPath !== parentPath) return;
+      evt.preventDefault();
+      evt.stopPropagation();
+      this.markDropTarget(row, this.isBeforeMidpoint(evt, row));
+    });
+    row.addEventListener("drop", (evt) => {
+      if (!this.dragged || this.dragged.topLevel || this.dragged.parentPath !== parentPath) return;
+      evt.preventDefault();
+      evt.stopPropagation();
+      void this.reorderChildren(parentPath, this.dragged.name, name, this.isBeforeMidpoint(evt, row));
+    });
+  }
+
+  private isBeforeMidpoint(evt: DragEvent, el: HTMLElement): boolean {
+    const rect = el.getBoundingClientRect();
+    return evt.clientY < rect.top + rect.height / 2;
+  }
+
+  private markDropTarget(el: HTMLElement, before: boolean): void {
+    this.clearDragIndicators();
+    el.addClass(before ? "para-drop-before" : "para-drop-after");
+  }
+
+  private clearDragIndicators(): void {
+    this.containerEl
+      .querySelectorAll(".para-drop-before, .para-drop-after")
+      .forEach((el) => el.removeClass("para-drop-before", "para-drop-after"));
+  }
+
+  private async reorderChildren(parentPath: string, draggedName: string, targetName: string, before: boolean): Promise<void> {
+    if (draggedName === targetName) return;
+    const parent = this.app.vault.getAbstractFileByPath(parentPath);
+    if (!(parent instanceof TFolder)) return;
+    const names = this.sortChildren(parent.children, parentPath)
+      .map((child) => child.name)
+      .filter((name) => name !== draggedName);
+    const targetIndex = names.indexOf(targetName);
+    if (targetIndex < 0) return;
+    names.splice(before ? targetIndex : targetIndex + 1, 0, draggedName);
+    this.plugin.settings.sortOrder[parentPath] = names;
+    await this.plugin.saveSettings();
+    this.render();
+  }
+
+  private async reorderTopLevel(draggedId: string, targetId: string, before: boolean): Promise<void> {
+    if (draggedId === targetId) return;
+    const folders = this.plugin.settings.folders;
+    const draggedIndex = folders.findIndex((folder) => folder.id === draggedId);
+    const targetIndex = folders.findIndex((folder) => folder.id === targetId);
+    if (draggedIndex < 0 || targetIndex < 0) return;
+    const [moved] = folders.splice(draggedIndex, 1);
+    const insertAt = folders.findIndex((folder) => folder.id === targetId);
+    folders.splice(before ? insertAt : insertAt + 1, 0, moved);
+    await this.plugin.saveSettings();
+    this.render();
   }
   
   private async createAndReveal(basePath: string, relativePath: string, kind: CreateKind): Promise<void> {

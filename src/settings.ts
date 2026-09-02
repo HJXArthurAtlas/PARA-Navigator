@@ -13,6 +13,8 @@ export interface ParaNavigatorSettings {
   folders: ParaFolderConfig[];
   /** Vault folder where generated .base files are written (created on demand only) */
   baseFolder: string;
+  /** Custom child ordering per folder path, set by drag-and-drop */
+  sortOrder: Record<string, string[]>;
 }
 
 export const DEFAULT_SETTINGS: ParaNavigatorSettings = {
@@ -24,4 +26,5 @@ export const DEFAULT_SETTINGS: ParaNavigatorSettings = {
     { id: "archives", name: "Archives", path: "Archives", icon: "archive" },
   ],
   baseFolder: "Dashboard",
+  sortOrder: {},
 };
