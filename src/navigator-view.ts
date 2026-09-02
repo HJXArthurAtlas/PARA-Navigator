@@ -1,21 +1,32 @@
-import { ItemView, Menu, Notice, TFile, TFolder, setIcon } from "obsidian";
-import type { WorkspaceLeaf } from "obsidian";
-import type { TAbstractFile } from "obsidian";
+import { ItemView, Notice, TFile, TFolder, setIcon } from "obsidian";
+import type { TAbstractFile, WorkspaceLeaf } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
-import type { CreateKind } from "./main";
 import type { ParaFolderConfig } from "./settings";
 
 export const VIEW_TYPE_NAVIGATOR = "para-navigator";
 
+interface DraggedItem {
+  topLevel: boolean;
+  parentPath: string;
+  name: string;
+  path: string;
+  isFolder: boolean;
+}
+
+/**
+ * Every node in the tree is a note. Folders act as hierarchy carriers and are
+ * represented by their folder note (`X/X.md`); the folder note itself is never
+ * shown as a child row.
+ */
 export class NavigatorView extends ItemView {
   private readonly plugin: ParaNavigatorPlugin;
   private readonly collapsed = new Set<string>();
-  /** Paths of expanded subfolders — survives full re-renders */
+  /** Paths of expanded nodes — survives full re-renders */
   private readonly expandedSubfolders = new Set<string>();
-  /** Pending inline creation target, if any */
-  private creating: { basePath: string; kind: CreateKind } | null = null;
+  /** Pending inline note creation target folder path, if any */
+  private creating: string | null = null;
   /** Row currently being dragged, if any */
-  private dragged: { topLevel: boolean; parentPath: string; name: string; path: string } | null = null;
+  private dragged: DraggedItem | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: ParaNavigatorPlugin) {
     super(leaf);
@@ -107,9 +118,10 @@ export class NavigatorView extends ItemView {
     header.createSpan({ cls: "para-folder-count", text: String(noteCount) });
 
     if (!exists) header.addClass("para-folder-missing");
+
     header.setAttr("draggable", "true");
     header.addEventListener("dragstart", (evt) => {
-      this.dragged = { topLevel: true, parentPath: "", name: config.id, path: config.path };
+      this.dragged = { topLevel: true, parentPath: "", name: config.id, path: config.path, isFolder: true };
       evt.dataTransfer?.setData("text/plain", config.id);
       header.addClass("para-dragging");
     });
@@ -139,24 +151,12 @@ export class NavigatorView extends ItemView {
         void this.moveItem(dragged.path, config.path);
       }
     });
+
     if (exists) {
-      const add = header.createSpan("para-add-button");
-      setIcon(add, "plus");
-      add.setAttr("role", "button");
-      add.setAttr("tabindex", "0");
-      add.setAttr("aria-label", `Create folder or note in ${config.name}`);
-      add.setAttr("data-tooltip-position", "top");
-      add.addEventListener("click", (evt) => {
-        evt.stopPropagation();
-        this.showCreateMenu(config.path, evt);
-      });
-      add.addEventListener("keydown", (evt) => {
-        if (evt.key === "Enter" || evt.key === " ") {
-          evt.preventDefault();
-          evt.stopPropagation();
-          this.showCreateMenu(config.path, evt);
-        }
-      });
+      this.addIconButton(header, "plus", `New note in ${config.name}`, () => this.startCreate(config.path));
+      this.addIconButton(header, "chart-column", `Open dashboard for ${config.name}`, () =>
+        void this.plugin.openFolderDashboard(config)
+      );
     }
 
     const toggle = () => {
@@ -183,18 +183,22 @@ export class NavigatorView extends ItemView {
       }
     });
 
-    const openDashboard = () => {
-      if (exists && this.collapsed.has(config.id)) {
-        this.collapsed.delete(config.id);
-        this.render();
+    const openNode = () => {
+      if (exists) {
+        if (this.collapsed.has(config.id)) {
+          this.collapsed.delete(config.id);
+          this.render();
+        }
+        void this.openFolderNote(abstract);
+      } else {
+        void this.plugin.openFolderDashboard(config);
       }
-      void this.plugin.openFolderDashboard(config);
     };
-    header.addEventListener("click", openDashboard);
+    header.addEventListener("click", openNode);
     header.addEventListener("keydown", (evt) => {
       if (evt.key === "Enter" || evt.key === " ") {
         evt.preventDefault();
-        openDashboard();
+        openNode();
       }
     });
 
@@ -208,83 +212,146 @@ export class NavigatorView extends ItemView {
 
   private renderTree(parent: HTMLElement, folder: TFolder, depth: number): void {
     const children = this.sortChildren(folder.children, folder.path);
+    const folderNotePath = `${folder.path}/${folder.name}.md`;
 
     for (const child of children) {
       if (child instanceof TFolder) {
-        const row = this.renderRow(parent, child.name, depth, `Folder ${child.name}`);
-        this.attachRowDrag(row, folder.path, child.name, child.path, true);
-        const isExpanded = this.expandedSubfolders.has(child.path);
-        row.setAttr("aria-expanded", String(isExpanded));
-        const body = parent.createDiv("para-tree-children");
-        if (isExpanded) {
-          this.renderTree(body, child, depth + 1);
-        } else {
-          body.hide();
-        }
-        const toggle = () => {
-          if (this.expandedSubfolders.has(child.path)) {
-            this.expandedSubfolders.delete(child.path);
-            body.hide();
-            row.setAttr("aria-expanded", "false");
-          } else {
-            this.expandedSubfolders.add(child.path);
-            if (body.childElementCount === 0) this.renderTree(body, child, depth + 1);
-            body.show();
-            row.setAttr("aria-expanded", "true");
-          }
-        };
-        row.addEventListener("click", toggle);
-        row.addEventListener("keydown", (evt) => {
-          if (evt.key === "Enter" || evt.key === " ") {
-            evt.preventDefault();
-            toggle();
-          }
-        });
-        const add = row.createSpan("para-add-button");
-        setIcon(add, "plus");
-        add.setAttr("role", "button");
-        add.setAttr("tabindex", "0");
-        add.setAttr("aria-label", `Create folder or note in ${child.name}`);
-        add.setAttr("data-tooltip-position", "top");
-        add.addEventListener("click", (evt) => {
-          evt.stopPropagation();
-          this.showCreateMenu(child.path, evt);
-        });
-        add.addEventListener("keydown", (evt) => {
-          if (evt.key === "Enter" || evt.key === " ") {
-            evt.preventDefault();
-            evt.stopPropagation();
-            this.showCreateMenu(child.path, evt);
-          }
-        });
-      } else if (child instanceof TFile && child.extension === "md") {
-        const row = this.renderRow(parent, child.basename, depth, `Open ${child.basename}`);
-        this.attachRowDrag(row, folder.path, child.name, child.path, false);
-        const open = () => void this.app.workspace.getLeaf("tab").openFile(child);
-        row.addEventListener("click", open);
-        row.addEventListener("keydown", (evt) => {
-          if (evt.key === "Enter" || evt.key === " ") {
-            evt.preventDefault();
-            open();
-          }
-        });
+        this.renderFolderNode(parent, child, depth);
+      } else if (child instanceof TFile) {
+        // The folder note is the node itself — never listed as a child.
+        if (child.path === folderNotePath) continue;
+        this.renderLeafNode(parent, child, depth);
       }
     }
-    if (this.creating?.basePath === folder.path) {
+
+    if (this.creating === folder.path) {
       parent.appendChild(this.renderCreateInput(depth));
     }
   }
+
+  /** A folder rendered as a note node; its content lives in `X/X.md`. */
+  private renderFolderNode(parent: HTMLElement, folder: TFolder, depth: number): void {
+    const row = this.renderRow(parent, folder.name, depth, `Open note for ${folder.name}`);
+    this.attachRowDrag(row, folder.parent?.path ?? "", folder.name, folder.path, true);
+
+    const chevron = createSpan("para-tree-chevron");
+    row.insertBefore(chevron, row.firstChild);
+    const isExpanded = this.expandedSubfolders.has(folder.path);
+    setIcon(chevron, isExpanded ? "chevron-down" : "chevron-right");
+    chevron.setAttr("role", "button");
+    chevron.setAttr("tabindex", "0");
+    chevron.setAttr("aria-label", `Expand or collapse ${folder.name}`);
+    row.setAttr("aria-expanded", String(isExpanded));
+
+    const body = parent.createDiv("para-tree-children");
+    if (isExpanded) {
+      this.renderTree(body, folder, depth + 1);
+    } else {
+      body.hide();
+    }
+
+    const toggle = () => {
+      if (this.expandedSubfolders.has(folder.path)) {
+        this.expandedSubfolders.delete(folder.path);
+        body.hide();
+        row.setAttr("aria-expanded", "false");
+        setIcon(chevron, "chevron-right");
+      } else {
+        this.expandedSubfolders.add(folder.path);
+        if (body.childElementCount === 0) this.renderTree(body, folder, depth + 1);
+        body.show();
+        row.setAttr("aria-expanded", "true");
+        setIcon(chevron, "chevron-down");
+      }
+    };
+    chevron.addEventListener("click", (evt) => {
+      evt.stopPropagation();
+      toggle();
+    });
+    chevron.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" || evt.key === " ") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        toggle();
+      }
+    });
+
+    const open = () => void this.openFolderNote(folder);
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" || evt.key === " ") {
+        evt.preventDefault();
+        open();
+      }
+    });
+
+    this.addIconButton(row, "plus", `New note in ${folder.name}`, () => this.startCreate(folder.path));
+  }
+
+  /** A plain file node. Markdown leaves can be converted into folder notes. */
+  private renderLeafNode(parent: HTMLElement, file: TFile, depth: number): void {
+    const isMarkdown = file.extension === "md";
+    const row = this.renderRow(parent, file.basename, depth, `Open ${file.name}`);
+    this.attachRowDrag(row, file.parent?.path ?? "", file.name, file.path, false);
+
+    const open = () => void this.app.workspace.getLeaf("tab").openFile(file);
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" || evt.key === " ") {
+        evt.preventDefault();
+        open();
+      }
+    });
+
+    if (isMarkdown) {
+      this.addIconButton(row, "plus", `New note under ${file.basename}`, () =>
+        void this.startCreateUnderLeaf(file)
+      );
+    }
+  }
+
+  private renderRow(parent: HTMLElement, label: string, depth: number, ariaLabel: string): HTMLElement {
+    const row = parent.createDiv("para-tree-row");
+    row.style.paddingLeft = `${8 + depth * 12}px`;
+    row.setAttr("role", "treeitem");
+    row.setAttr("tabindex", "0");
+    row.setAttr("aria-label", ariaLabel);
+    row.createSpan({ cls: "para-tree-label", text: label });
+    return row;
+  }
+
+  private addIconButton(parent: HTMLElement, iconName: string, label: string, onClick: () => void): void {
+    const button = parent.createSpan("para-add-button");
+    setIcon(button, iconName);
+    button.setAttr("role", "button");
+    button.setAttr("tabindex", "0");
+    button.setAttr("aria-label", label);
+    button.setAttr("data-tooltip-position", "top");
+    button.addEventListener("click", (evt) => {
+      evt.stopPropagation();
+      onClick();
+    });
+    button.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" || evt.key === " ") {
+        evt.preventDefault();
+        evt.stopPropagation();
+        onClick();
+      }
+    });
+  }
+
+  private async openFolderNote(folder: TFolder): Promise<void> {
+    const file = await this.plugin.ensureFolderNote(folder);
+    await this.app.workspace.getLeaf("tab").openFile(file);
+  }
+
   private renderCreateInput(depth: number): HTMLElement {
-    const creating = this.creating;
     const row = createDiv("para-tree-row para-tree-editing");
     row.style.paddingLeft = `${8 + depth * 12}px`;
     const input = row.createEl("input", { cls: "para-tree-input" });
     input.setAttr("type", "text");
-    input.setAttr(
-      "placeholder",
-      creating?.kind === "note" ? "note name (folder/note works too)" : "folder/subfolder"
-    );
-    input.setAttr("aria-label", creating?.kind === "note" ? "New note name" : "New folder name");
+    input.setAttr("placeholder", "note name (a/b works)");
+    input.setAttr("aria-label", "New note name");
 
     const cancel = () => {
       this.creating = null;
@@ -294,10 +361,10 @@ export class NavigatorView extends ItemView {
       if (evt.key === "Enter") {
         evt.preventDefault();
         const value = input.value.trim();
-        const target = this.creating;
+        const basePath = this.creating;
         this.creating = null;
-        if (target && value.length > 0) {
-          void this.createAndReveal(target.basePath, value, target.kind);
+        if (basePath && value.length > 0) {
+          void this.createAndReveal(basePath, value);
         } else {
           this.render();
         }
@@ -312,31 +379,8 @@ export class NavigatorView extends ItemView {
     return row;
   }
 
-  private showCreateMenu(basePath: string, evt: MouseEvent | KeyboardEvent): void {
-    const menu = new Menu();
-    menu.addItem((item) =>
-      item
-        .setTitle("New folder")
-        .setIcon("folder-plus")
-        .onClick(() => this.startCreate(basePath, "folder"))
-    );
-    menu.addItem((item) =>
-      item
-        .setTitle("New note")
-        .setIcon("file-plus")
-        .onClick(() => this.startCreate(basePath, "note"))
-    );
-    if (evt instanceof MouseEvent) {
-      menu.showAtMouseEvent(evt);
-    } else {
-      const target = evt.target;
-      const rect = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
-      menu.showAtPosition({ x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + 4 });
-    }
-  }
-
-  private startCreate(basePath: string, kind: CreateKind): void {
-    this.creating = { basePath, kind };
+  private startCreate(basePath: string): void {
+    this.creating = basePath;
     // Make sure the target's children are visible so the input row shows.
     this.expandedSubfolders.add(basePath);
     const topLevel = this.plugin.settings.folders.find((folder) => folder.path === basePath);
@@ -346,15 +390,36 @@ export class NavigatorView extends ItemView {
     input?.focus();
   }
 
-  private renderRow(parent: HTMLElement, label: string, depth: number, ariaLabel: string): HTMLElement {
-    const row = parent.createDiv("para-tree-row");
-    row.style.paddingLeft = `${8 + depth * 12}px`;
-    row.setAttr("role", "treeitem");
-    row.setAttr("tabindex", "0");
-    row.setAttr("aria-label", ariaLabel);
-    row.createSpan({ cls: "para-tree-label", text: label });
-    return row;
+  /** Converts a leaf note into a folder note, then offers inline child creation. */
+  private async startCreateUnderLeaf(file: TFile): Promise<void> {
+    const folder = await this.plugin.convertLeafToFolderNote(file);
+    if (!folder) return;
+    this.startCreate(folder.path);
   }
+
+  private async createAndReveal(basePath: string, relativePath: string): Promise<void> {
+    const created = await this.plugin.createEntry(basePath, relativePath, "note");
+    if (!created) return;
+
+    // Expand the parent chain so the new note is visible after re-render.
+    const parentPath = created.includes("/") ? created.slice(0, created.lastIndexOf("/")) : "";
+    let cursor = basePath;
+    const remainder = parentPath.startsWith(`${basePath}/`) ? parentPath.slice(basePath.length + 1) : "";
+    for (const segment of remainder.split("/").filter((part) => part.length > 0)) {
+      cursor = `${cursor}/${segment}`;
+      this.expandedSubfolders.add(cursor);
+    }
+    this.collapsed.delete(
+      this.plugin.settings.folders.find((folder) => folder.path === basePath)?.id ?? ""
+    );
+    this.render();
+
+    const file = this.app.vault.getAbstractFileByPath(created);
+    if (file instanceof TFile) {
+      await this.app.workspace.getLeaf("tab").openFile(file);
+    }
+  }
+
   /** Orders children by the user's custom order, unlisted items appended by default sort. */
   private sortChildren(children: TAbstractFile[], parentPath: string): TAbstractFile[] {
     const defaultCompare = (a: TAbstractFile, b: TAbstractFile) => {
@@ -378,7 +443,7 @@ export class NavigatorView extends ItemView {
   private attachRowDrag(row: HTMLElement, parentPath: string, name: string, path: string, isFolder: boolean): void {
     row.setAttr("draggable", "true");
     row.addEventListener("dragstart", (evt) => {
-      this.dragged = { topLevel: false, parentPath, name, path };
+      this.dragged = { topLevel: false, parentPath, name, path, isFolder };
       evt.dataTransfer?.setData("text/plain", name);
       evt.stopPropagation();
       row.addClass("para-dragging");
@@ -392,7 +457,9 @@ export class NavigatorView extends ItemView {
       const dragged = this.dragged;
       if (!dragged || dragged.topLevel) return;
       const sameParent = dragged.parentPath === parentPath;
-      const canDropInto = isFolder && this.canMoveInto(dragged.path, path);
+      // Folders and markdown leaves (via conversion) accept move-into drops.
+      const targetAccepts = isFolder || path.toLowerCase().endsWith(".md");
+      const canDropInto = targetAccepts && this.canMoveInto(dragged.path, isFolder ? path : path.slice(0, -".md".length));
       if (!sameParent && !canDropInto) return;
       evt.preventDefault();
       evt.stopPropagation();
@@ -409,20 +476,21 @@ export class NavigatorView extends ItemView {
       const dragged = this.dragged;
       if (!dragged || dragged.topLevel) return;
       const sameParent = dragged.parentPath === parentPath;
-      const canDropInto = isFolder && this.canMoveInto(dragged.path, path);
+      const targetAccepts = isFolder || path.toLowerCase().endsWith(".md");
+      const canDropInto = targetAccepts && this.canMoveInto(dragged.path, isFolder ? path : path.slice(0, -".md".length));
       if (!sameParent && !canDropInto) return;
       evt.preventDefault();
       evt.stopPropagation();
       const zone = this.dropZone(evt, row, sameParent && canDropInto);
       if (zone === "into" || !sameParent) {
-        void this.moveItem(dragged.path, path);
+        void this.moveIntoNode(dragged.path, path, isFolder);
       } else {
         void this.reorderChildren(parentPath, dragged.name, name, zone === "before");
       }
     });
   }
 
-  /** True when draggedPath may be moved into targetFolderPath. */
+  /** True when draggedPath may be moved into the folder at targetFolderPath. */
   private canMoveInto(draggedPath: string, targetFolderPath: string): boolean {
     if (draggedPath === targetFolderPath) return false;
     if (targetFolderPath.startsWith(`${draggedPath}/`)) return false;
@@ -430,7 +498,7 @@ export class NavigatorView extends ItemView {
     return draggedParent !== targetFolderPath;
   }
 
-  /** Middle zone of a folder row means "move into" when allowed. */
+  /** Middle zone of a row means "move into" when allowed. */
   private dropZone(evt: DragEvent, el: HTMLElement, allowInto: boolean): "before" | "into" | "after" {
     if (!allowInto) return this.isBeforeMidpoint(evt, el) ? "before" : "after";
     const rect = el.getBoundingClientRect();
@@ -440,9 +508,38 @@ export class NavigatorView extends ItemView {
     return "into";
   }
 
+  private isBeforeMidpoint(evt: DragEvent, el: HTMLElement): boolean {
+    const rect = el.getBoundingClientRect();
+    return evt.clientY < rect.top + rect.height / 2;
+  }
+
+  private markDropTarget(el: HTMLElement, before: boolean): void {
+    this.clearDragIndicators();
+    el.addClass(before ? "para-drop-before" : "para-drop-after");
+  }
+
   private markDropInto(el: HTMLElement): void {
     this.clearDragIndicators();
     el.addClass("para-drop-into");
+  }
+
+  private clearDragIndicators(): void {
+    this.containerEl
+      .querySelectorAll(".para-drop-before, .para-drop-after, .para-drop-into")
+      .forEach((el) => el.removeClass("para-drop-before", "para-drop-after", "para-drop-into"));
+  }
+
+  /** Moves an item under a node, converting a markdown leaf into a folder note first if needed. */
+  private async moveIntoNode(draggedPath: string, targetPath: string, targetIsFolder: boolean): Promise<void> {
+    let folderPath = targetPath;
+    if (!targetIsFolder) {
+      const file = this.app.vault.getAbstractFileByPath(targetPath);
+      if (!(file instanceof TFile)) return;
+      const folder = await this.plugin.convertLeafToFolderNote(file);
+      if (!folder) return;
+      folderPath = folder.path;
+    }
+    await this.moveItem(draggedPath, folderPath);
   }
 
   /** Moves a file or folder into another folder, updating links vault-wide. */
@@ -463,22 +560,6 @@ export class NavigatorView extends ItemView {
     await this.app.fileManager.renameFile(item, newPath);
     this.expandedSubfolders.add(targetFolderPath);
     new Notice(`Moved to ${newPath}`);
-  }
-
-  private isBeforeMidpoint(evt: DragEvent, el: HTMLElement): boolean {
-    const rect = el.getBoundingClientRect();
-    return evt.clientY < rect.top + rect.height / 2;
-  }
-
-  private markDropTarget(el: HTMLElement, before: boolean): void {
-    this.clearDragIndicators();
-    el.addClass(before ? "para-drop-before" : "para-drop-after");
-  }
-
-  private clearDragIndicators(): void {
-    this.containerEl
-      .querySelectorAll(".para-drop-before, .para-drop-after, .para-drop-into")
-      .forEach((el) => el.removeClass("para-drop-before", "para-drop-after", "para-drop-into"));
   }
 
   private async reorderChildren(parentPath: string, draggedName: string, targetName: string, before: boolean): Promise<void> {
@@ -508,35 +589,4 @@ export class NavigatorView extends ItemView {
     await this.plugin.saveSettings();
     this.render();
   }
-  
-  private async createAndReveal(basePath: string, relativePath: string, kind: CreateKind): Promise<void> {
-    const created = await this.plugin.createEntry(basePath, relativePath, kind);
-    if (!created) return;
-
-    // Expand the parent chain so the new entry is visible after re-render.
-    const parentPath = created.includes("/") ? created.slice(0, created.lastIndexOf("/")) : "";
-    let cursor = basePath;
-    const remainder = parentPath.startsWith(`${basePath}/`) ? parentPath.slice(basePath.length + 1) : "";
-    if (kind === "folder") {
-      this.expandedSubfolders.add(created);
-    }
-    for (const segment of remainder.split("/").filter((part) => part.length > 0)) {
-      cursor = `${cursor}/${segment}`;
-      this.expandedSubfolders.add(cursor);
-    }
-    this.collapsed.delete(
-      this.plugin.settings.folders.find((folder) => folder.path === basePath)?.id ?? ""
-    );
-    this.render();
-
-    if (kind === "note") {
-      const file = this.app.vault.getAbstractFileByPath(created);
-      if (file instanceof TFile) {
-        await this.app.workspace.getLeaf("tab").openFile(file);
-      }
-    } else {
-      new Notice(`Created folder: ${created}`);
-    }
-  }
-
 }

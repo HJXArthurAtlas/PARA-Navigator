@@ -107,6 +107,39 @@ export default class ParaNavigatorPlugin extends Plugin {
     }
     return current;
   }
+  /** Returns the folder note for a folder (`X/X.md`), creating it empty if missing. */
+  async ensureFolderNote(folder: TFolder): Promise<TFile> {
+    const path = `${folder.path}/${folder.name}.md`;
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) return existing;
+    return this.app.vault.create(path, "");
+  }
+
+  /**
+   * Converts a leaf note `P/X.md` into a folder note `P/X/X.md` so it can
+   * have children. Links vault-wide are updated by renameFile.
+   * Returns the new folder, or null when conversion is impossible.
+   */
+  async convertLeafToFolderNote(file: TFile): Promise<TFolder | null> {
+    if (file.extension !== "md") return null;
+    const folderPath = file.path.slice(0, -".md".length);
+    const targetNotePath = `${folderPath}/${file.name}`;
+    if (this.app.vault.getAbstractFileByPath(targetNotePath)) {
+      new Notice(`Cannot convert: ${targetNotePath} already exists.`);
+      return null;
+    }
+    const existing = this.app.vault.getAbstractFileByPath(folderPath);
+    if (existing instanceof TFile) {
+      new Notice(`Cannot convert: ${folderPath} is blocked by a file.`);
+      return null;
+    }
+    if (!existing) {
+      await this.app.vault.createFolder(folderPath);
+    }
+    await this.app.fileManager.renameFile(file, targetNotePath);
+    const folder = this.app.vault.getAbstractFileByPath(folderPath);
+    return folder instanceof TFolder ? folder : null;
+  }
 
   async activateNavigator(): Promise<void> {
     const { workspace } = this.app;
