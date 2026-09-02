@@ -1,8 +1,9 @@
-import { Plugin, TFile, TFolder } from "obsidian";
+import { Plugin, Notice, TFile, TFolder } from "obsidian";
 import { NavigatorView, VIEW_TYPE_NAVIGATOR } from "./navigator-view";
 import { StatsView, VIEW_TYPE_STATS } from "./stats-view";
 import { ParaNavigatorSettingTab } from "./settings-tab";
 import { baseFileContent } from "./bases";
+import type { CreateKind } from "./create-modal";
 import { detectParaPaths } from "./para-detect";
 import { DEFAULT_SETTINGS } from "./settings";
 import type { ParaFolderConfig, ParaNavigatorSettings } from "./settings";
@@ -63,6 +64,48 @@ export default class ParaNavigatorPlugin extends Plugin {
       }
     }
     return created;
+  }
+  /**
+   * Creates a folder chain or a note under basePath from a slash-separated
+   * relative path ("area/topic/sub"). Notes get ".md" appended when missing.
+   * Returns the created path, or null when the path is invalid or taken.
+   */
+  async createEntry(basePath: string, relativePath: string, kind: CreateKind): Promise<string | null> {
+    const segments = relativePath
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0);
+    if (segments.length === 0 || segments.some((segment) => segment === "." || segment === "..")) {
+      new Notice("Invalid path.");
+      return null;
+    }
+    if (kind === "note" && !segments[segments.length - 1].toLowerCase().endsWith(".md")) {
+      segments[segments.length - 1] = `${segments[segments.length - 1]}.md`;
+    }
+
+    let current = basePath;
+    for (let index = 0; index < segments.length; index++) {
+      current = `${current}/${segments[index]}`;
+      const isLast = index === segments.length - 1;
+      const existing = this.app.vault.getAbstractFileByPath(current);
+      if (existing) {
+        if (isLast) {
+          new Notice(`Already exists: ${current}`);
+          return null;
+        }
+        if (existing instanceof TFile) {
+          new Notice(`A file blocks this path: ${current}`);
+          return null;
+        }
+        continue;
+      }
+      if (isLast && kind === "note") {
+        await this.app.vault.create(current, "");
+      } else {
+        await this.app.vault.createFolder(current);
+      }
+    }
+    return current;
   }
 
   async activateNavigator(): Promise<void> {

@@ -1,7 +1,8 @@
-import { ItemView, TFile, TFolder, setIcon } from "obsidian";
+import { ItemView, Menu, Notice, TFile, TFolder, setIcon } from "obsidian";
 import type { WorkspaceLeaf } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
 import type { ParaFolderConfig } from "./settings";
+import { CreateEntryModal } from "./create-modal";
 
 export const VIEW_TYPE_NAVIGATOR = "para-navigator";
 
@@ -101,6 +102,26 @@ export class NavigatorView extends ItemView {
     header.createSpan({ cls: "para-folder-count", text: String(noteCount) });
 
     if (!exists) header.addClass("para-folder-missing");
+    if (exists) {
+      const add = header.createSpan("para-add-button");
+      setIcon(add, "plus");
+      add.setAttr("role", "button");
+      add.setAttr("tabindex", "0");
+      add.setAttr("aria-label", `Create folder or note in ${config.name}`);
+      add.setAttr("data-tooltip-position", "top");
+      const openModal = () => this.openCreateModal(config.path);
+      add.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        openModal();
+      });
+      add.addEventListener("keydown", (evt) => {
+        if (evt.key === "Enter" || evt.key === " ") {
+          evt.preventDefault();
+          evt.stopPropagation();
+          openModal();
+        }
+      });
+    }
 
     const toggle = () => {
       if (!exists) return;
@@ -186,6 +207,23 @@ export class NavigatorView extends ItemView {
             toggle();
           }
         });
+        row.addEventListener("contextmenu", (evt) => {
+          evt.preventDefault();
+          const menu = new Menu();
+          menu.addItem((item) =>
+            item
+              .setTitle("New folder")
+              .setIcon("folder-plus")
+              .onClick(() => this.openCreateModal(child.path))
+          );
+          menu.addItem((item) =>
+            item
+              .setTitle("New note")
+              .setIcon("file-plus")
+              .onClick(() => this.openCreateModal(child.path))
+          );
+          menu.showAtMouseEvent(evt);
+        });
       } else if (child instanceof TFile && child.extension === "md") {
         const row = this.renderRow(parent, child.basename, depth, `Open ${child.basename}`);
         const open = () => void this.app.workspace.getLeaf("tab").openFile(child);
@@ -208,6 +246,41 @@ export class NavigatorView extends ItemView {
     row.setAttr("aria-label", ariaLabel);
     row.createSpan({ cls: "para-tree-label", text: label });
     return row;
+  }
+  private openCreateModal(basePath: string): void {
+    new CreateEntryModal(this.app, basePath, (relativePath, kind) => {
+      void this.createAndReveal(basePath, relativePath, kind);
+    }).open();
+  }
+
+  private async createAndReveal(basePath: string, relativePath: string, kind: "folder" | "note"): Promise<void> {
+    const created = await this.plugin.createEntry(basePath, relativePath, kind);
+    if (!created) return;
+
+    // Expand the parent chain so the new entry is visible after re-render.
+    const parentPath = created.includes("/") ? created.slice(0, created.lastIndexOf("/")) : "";
+    let cursor = basePath;
+    const remainder = parentPath.startsWith(`${basePath}/`) ? parentPath.slice(basePath.length + 1) : "";
+    if (kind === "folder") {
+      this.expandedSubfolders.add(created);
+    }
+    for (const segment of remainder.split("/").filter((part) => part.length > 0)) {
+      cursor = `${cursor}/${segment}`;
+      this.expandedSubfolders.add(cursor);
+    }
+    this.collapsed.delete(
+      this.plugin.settings.folders.find((folder) => folder.path === basePath)?.id ?? ""
+    );
+    this.render();
+
+    if (kind === "note") {
+      const file = this.app.vault.getAbstractFileByPath(created);
+      if (file instanceof TFile) {
+        await this.app.workspace.getLeaf("tab").openFile(file);
+      }
+    } else {
+      new Notice(`Created folder: ${created}`);
+    }
   }
 
 }
