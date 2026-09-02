@@ -77,10 +77,105 @@
   line-height: 1;
 }
 
-.para-icon-choice {
-  display: inline-flex;
-  margin-right: var(--size-4-2);
+.para-icon-tabs {
+  display: flex;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-2);
+}
+
+.para-icon-tab {
+  border: none;
+  background: transparent;
   color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--size-4-1) var(--size-4-3);
+  border-radius: var(--radius-s);
+}
+
+.para-icon-tab:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.para-icon-tab.is-active {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.para-icon-search {
+  width: 100%;
+  margin-bottom: var(--size-4-2);
+}
+
+.para-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: var(--size-4-1);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.para-icon-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.para-icon-tile:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.para-icon-empty {
+  grid-column: 1 / -1;
+  color: var(--text-faint);
+  text-align: center;
+  padding: var(--size-4-4);
+}
+
+.para-color-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.para-color-preview {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.para-color-input {
+  flex: 1;
+}
+
+.para-color-input.is-invalid {
+  border-color: var(--text-error);
+}
+
+.para-color-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: var(--size-4-2);
+  margin: var(--size-4-3) 0;
+}
+
+.para-color-tile {
+  height: 24px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.para-color-tile:hover {
+  transform: scale(1.15);
 }
 
 .para-folder-count {

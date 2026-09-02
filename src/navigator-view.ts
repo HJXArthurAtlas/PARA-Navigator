@@ -486,7 +486,7 @@ export class NavigatorView extends ItemView {
       );
     }
     menu.addItem((item) =>
-      item.setTitle("设置名称颜色").setIcon("palette").onClick(() => {
+      item.setTitle("设置颜色").setIcon("palette").onClick(() => {
         new ColorPickerModal(this.app, settings.nameColors[path] ?? null, (color) => {
           settings.nameColors[path] = color;
           void this.persistAndRender();
@@ -495,7 +495,7 @@ export class NavigatorView extends ItemView {
     );
     if (settings.nameColors[path]) {
       menu.addItem((item) =>
-        item.setTitle("清除名称颜色").setIcon("eraser").onClick(() => {
+        item.setTitle("清除颜色").setIcon("eraser").onClick(() => {
           delete settings.nameColors[path];
           void this.persistAndRender();
         })
