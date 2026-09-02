@@ -160,7 +160,7 @@ export class StatsView extends ItemView {
         const nameCell = row.createEl("td");
         const link = nameCell.createEl("a", { text: file.basename, cls: "internal-link" });
         link.setAttr("aria-label", `Open ${file.basename}`);
-        link.addEventListener("click", () => void this.app.workspace.getLeaf("tab").openFile(file));
+        link.addEventListener("click", () => this.plugin.openFileReusingTab(file));
         row.createEl("td", { text: moment(file.stat.mtime).format("YYYY-MM-DD HH:mm") });
         row.createEl("td", { text: String(words) });
       }

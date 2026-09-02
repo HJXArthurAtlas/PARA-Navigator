@@ -298,7 +298,7 @@ export class NavigatorView extends ItemView {
     const placeholder = createSpan("para-tree-chevron para-chevron-hidden");
     row.insertBefore(placeholder, row.firstChild);
 
-    const open = () => void this.app.workspace.getLeaf("tab").openFile(file);
+    const open = () => this.plugin.openFileReusingTab(file);
     row.addEventListener("click", open);
     row.addEventListener("keydown", (evt) => {
       if (evt.key === "Enter" || evt.key === " ") {
@@ -510,7 +510,7 @@ export class NavigatorView extends ItemView {
 
   private async openFolderNote(folder: TFolder): Promise<void> {
     const file = await this.plugin.ensureFolderNote(folder);
-    await this.app.workspace.getLeaf("tab").openFile(file);
+    this.plugin.openFileReusingTab(file);
   }
 
   private renderCreateInput(depth: number): HTMLElement {
@@ -579,7 +579,7 @@ export class NavigatorView extends ItemView {
       this.plugin.settings.folders.find((folder) => folder.path === basePath)?.id ?? ""
     );
     this.render();
-    await this.app.workspace.getLeaf("tab").openFile(file);
+    this.plugin.openFileReusingTab(file);
   }
 
   private startRename(path: string): void {
@@ -709,6 +709,10 @@ export class NavigatorView extends ItemView {
   }
 
   private openFileIn(file: TFile, mode: "tab" | "split" | "window"): void {
+    if (mode === "tab") {
+      this.plugin.openFileReusingTab(file);
+      return;
+    }
     void this.app.workspace.getLeaf(mode).openFile(file);
   }
 

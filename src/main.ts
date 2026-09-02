@@ -1,4 +1,4 @@
-import { Plugin, Notice, TFile, TFolder } from "obsidian";
+import { Plugin, MarkdownView, Notice, TFile, TFolder } from "obsidian";
 import { NavigatorView, VIEW_TYPE_NAVIGATOR } from "./navigator-view";
 import { StatsView, VIEW_TYPE_STATS } from "./stats-view";
 import { ParaNavigatorSettingTab } from "./settings-tab";
@@ -9,6 +9,8 @@ import type { ParaFolderConfig, ParaNavigatorSettings } from "./settings";
 
 export default class ParaNavigatorPlugin extends Plugin {
   settings!: ParaNavigatorSettings;
+  private prevNewFileLocation: unknown = null;
+  private prevNewFileFolderPath: unknown = null;
 
   async onload(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -39,6 +41,38 @@ export default class ParaNavigatorPlugin extends Plugin {
     }
 
     this.addSettingTab(new ParaNavigatorSettingTab(this.app, this));
+
+    this.setInboxAsNewFileLocation();
+  }
+
+  onunload(): void {
+    if (this.prevNewFileLocation !== null) {
+      this.app.vault.setConfig("newFileLocation", this.prevNewFileLocation);
+      this.app.vault.setConfig("newFileFolderPath", this.prevNewFileFolderPath);
+    }
+  }
+
+  /** Native "create new note" lands in the Inbox instead of the vault root. */
+  private setInboxAsNewFileLocation(): void {
+    const inbox = this.settings.folders.find((folder) => folder.id === "inbox");
+    if (!inbox) return;
+    if (!(this.app.vault.getAbstractFileByPath(inbox.path) instanceof TFolder)) return;
+    this.prevNewFileLocation = this.app.vault.getConfig("newFileLocation");
+    this.prevNewFileFolderPath = this.app.vault.getConfig("newFileFolderPath");
+    this.app.vault.setConfig("newFileLocation", "folder");
+    this.app.vault.setConfig("newFileFolderPath", inbox.path);
+  }
+
+  /** Focuses the tab already showing `file` when one exists; otherwise opens a new tab. */
+  openFileReusingTab(file: TFile): void {
+    const existing = this.app.workspace
+      .getLeavesOfType("markdown")
+      .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
+    if (existing) {
+      this.app.workspace.revealLeaf(existing);
+    } else {
+      void this.app.workspace.getLeaf("tab").openFile(file);
+    }
   }
 
   async saveSettings(): Promise<void> {
