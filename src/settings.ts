@@ -15,6 +15,10 @@ export interface ParaNavigatorSettings {
   baseFolder: string;
   /** Custom child ordering per folder path, set by drag-and-drop */
   sortOrder: Record<string, string[]>;
+  /** Custom lucide icon per sub-level node path (top-level icons live in folders[].icon) */
+  nodeIcons: Record<string, string>;
+  /** Custom name display color per path, all levels */
+  nameColors: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: ParaNavigatorSettings = {
@@ -27,4 +31,6 @@ export const DEFAULT_SETTINGS: ParaNavigatorSettings = {
   ],
   baseFolder: "Dashboard",
   sortOrder: {},
+  nodeIcons: {},
+  nameColors: {},
 };

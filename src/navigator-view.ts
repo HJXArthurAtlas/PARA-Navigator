@@ -1,6 +1,8 @@
 import { ItemView, Menu, Notice, FileSystemAdapter, TFile, TFolder, setIcon } from "obsidian";
 import type { TAbstractFile, WorkspaceLeaf } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
+import { ColorPickerModal, IconPickerModal } from "./pickers";
+import { DEFAULT_SETTINGS } from "./settings";
 import type { ParaFolderConfig } from "./settings";
 
 export const VIEW_TYPE_NAVIGATOR = "para-navigator";
@@ -113,7 +115,9 @@ export class NavigatorView extends ItemView {
     const icon = header.createSpan("para-folder-icon");
     setIcon(icon, config.icon);
 
-    header.createSpan({ cls: "para-folder-name", text: config.name });
+    const nameEl = header.createSpan({ cls: "para-folder-name", text: config.name });
+    const nameColor = this.plugin.settings.nameColors[config.path];
+    if (nameColor) nameEl.style.color = nameColor;
     header.createSpan({ cls: "para-folder-count", text: String(noteCount) });
 
     if (!exists) header.addClass("para-folder-missing");
@@ -213,7 +217,7 @@ export class NavigatorView extends ItemView {
       parent.appendChild(this.renderRenameInput(folder.name, folder.path));
       return;
     }
-    const row = this.renderRow(parent, folder.name, depth, `Open note for ${folder.name}`);
+    const row = this.renderRow(parent, folder.name, depth, `Open note for ${folder.name}`, folder.path);
     this.attachRowDrag(row, folder.parent?.path ?? "", folder.name, folder.path, true);
 
     const chevron = createSpan("para-tree-chevron");
@@ -288,7 +292,7 @@ export class NavigatorView extends ItemView {
       parent.appendChild(this.renderRenameInput(file.basename, file.path));
       return;
     }
-    const row = this.renderRow(parent, file.basename, depth, `Open ${file.name}`);
+    const row = this.renderRow(parent, file.basename, depth, `Open ${file.name}`, file.path);
     this.attachRowDrag(row, file.parent?.path ?? "", file.name, file.path, false);
     // Placeholder keeps labels aligned with rows that have a real chevron.
     const placeholder = createSpan("para-tree-chevron para-chevron-hidden");
@@ -319,6 +323,18 @@ export class NavigatorView extends ItemView {
         .setIcon("bar-chart-3")
         .onClick(() => void this.plugin.openFolderDashboard(config))
     );
+    const defaultIcon = DEFAULT_SETTINGS.folders.find((f) => f.id === config.id)?.icon ?? "folder";
+    this.addAppearanceItems(menu, config.path, {
+      set: (id) => {
+        config.icon = id;
+      },
+      clear:
+        config.icon !== defaultIcon
+          ? () => {
+              config.icon = defaultIcon;
+            }
+          : null,
+    });
     menu.showAtMouseEvent(evt);
   }
 
@@ -356,6 +372,7 @@ export class NavigatorView extends ItemView {
     menu.addItem((item) =>
       item.setTitle("复制相对路径").setIcon("clipboard-list").onClick(() => this.copyPath(folder.path, false))
     );
+    this.addAppearanceItems(menu, folder.path, this.nodeIconAccessor(folder.path));
     menu.showAtMouseEvent(evt);
   }
 
@@ -388,15 +405,38 @@ export class NavigatorView extends ItemView {
     menu.addItem((item) =>
       item.setTitle("复制相对路径").setIcon("clipboard-list").onClick(() => this.copyPath(file.path, false))
     );
+    this.addAppearanceItems(menu, file.path, this.nodeIconAccessor(file.path));
     menu.showAtMouseEvent(evt);
   }
 
-  private renderRow(parent: HTMLElement, label: string, depth: number, ariaLabel: string): HTMLElement {
+  /** Icon accessor backed by settings.nodeIcons for sub-level nodes. */
+  private nodeIconAccessor(path: string): { set: (id: string) => void; clear: (() => void) | null } {
+    const icons = this.plugin.settings.nodeIcons;
+    return {
+      set: (id) => {
+        icons[path] = id;
+      },
+      clear: icons[path]
+        ? () => {
+            delete icons[path];
+          }
+        : null,
+    };
+  }
+
+  private renderRow(parent: HTMLElement, label: string, depth: number, ariaLabel: string, path: string): HTMLElement {
     const row = parent.createDiv("para-tree-row");
     row.setAttr("role", "treeitem");
     row.setAttr("tabindex", "0");
     row.setAttr("aria-label", ariaLabel);
-    row.createSpan({ cls: "para-tree-label", text: label });
+    const iconId = this.plugin.settings.nodeIcons[path];
+    if (iconId) {
+      const iconEl = row.createSpan("para-tree-icon");
+      setIcon(iconEl, iconId);
+    }
+    const labelEl = row.createSpan({ cls: "para-tree-label", text: label });
+    const color = this.plugin.settings.nameColors[path];
+    if (color) labelEl.style.color = color;
     return row;
   }
 
@@ -418,6 +458,54 @@ export class NavigatorView extends ItemView {
         onClick();
       }
     });
+  }
+
+  /** Icon/color customization items shared by every level's context menu. */
+  private addAppearanceItems(
+    menu: Menu,
+    path: string,
+    icon: { set: (id: string) => void; clear: (() => void) | null }
+  ): void {
+    const settings = this.plugin.settings;
+    menu.addSeparator();
+    menu.addItem((item) =>
+      item.setTitle("选择图标").setIcon("image-plus").onClick(() => {
+        new IconPickerModal(this.app, (id) => {
+          icon.set(id);
+          void this.persistAndRender();
+        }).open();
+      })
+    );
+    if (icon.clear) {
+      const clear = icon.clear;
+      menu.addItem((item) =>
+        item.setTitle("删除图标").setIcon("image-off").onClick(() => {
+          clear();
+          void this.persistAndRender();
+        })
+      );
+    }
+    menu.addItem((item) =>
+      item.setTitle("设置名称颜色").setIcon("palette").onClick(() => {
+        new ColorPickerModal(this.app, settings.nameColors[path] ?? null, (color) => {
+          settings.nameColors[path] = color;
+          void this.persistAndRender();
+        }).open();
+      })
+    );
+    if (settings.nameColors[path]) {
+      menu.addItem((item) =>
+        item.setTitle("清除名称颜色").setIcon("eraser").onClick(() => {
+          delete settings.nameColors[path];
+          void this.persistAndRender();
+        })
+      );
+    }
+  }
+
+  private async persistAndRender(): Promise<void> {
+    await this.plugin.saveSettings();
+    this.render();
   }
 
   private async openFolderNote(folder: TFolder): Promise<void> {
