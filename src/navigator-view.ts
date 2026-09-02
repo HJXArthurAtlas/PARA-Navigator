@@ -108,13 +108,6 @@ export class NavigatorView extends ItemView {
       exists ? `${config.name}, ${noteCount} notes` : `${config.name} — folder not found`
     );
 
-    const chevron = header.createSpan("para-chevron");
-    if (exists && abstract.children.length > 0) {
-      setIcon(chevron, isExpanded ? "chevron-down" : "chevron-right");
-    } else {
-      chevron.addClass("para-chevron-hidden");
-    }
-
     const icon = header.createSpan("para-folder-icon");
     setIcon(icon, config.icon);
 
@@ -160,36 +153,17 @@ export class NavigatorView extends ItemView {
       this.addIconButton(header, "plus", `New note in ${config.name}`, () => this.startCreate(config.path));
     }
 
-    const toggle = () => {
-      if (!exists || abstract.children.length === 0) return;
-      if (this.collapsed.has(config.id)) {
-        this.collapsed.delete(config.id);
-      } else {
-        this.collapsed.add(config.id);
-      }
-      this.render();
-    };
-    chevron.setAttr("role", "button");
-    chevron.setAttr("tabindex", "0");
-    chevron.setAttr("aria-label", `Expand or collapse ${config.name}`);
-    chevron.addEventListener("click", (evt) => {
-      evt.stopPropagation();
-      toggle();
-    });
-    chevron.addEventListener("keydown", (evt) => {
-      if (evt.key === "Enter" || evt.key === " ") {
-        evt.preventDefault();
-        evt.stopPropagation();
-        toggle();
-      }
-    });
-
     const openNode = () => {
-      if (exists && this.collapsed.has(config.id)) {
-        this.collapsed.delete(config.id);
+      // Row click toggles the tree and opens the dashboard, which acts as
+      // the top-level entry's content — there is no folder note here.
+      if (exists) {
+        if (this.collapsed.has(config.id)) {
+          this.collapsed.delete(config.id);
+        } else {
+          this.collapsed.add(config.id);
+        }
         this.render();
       }
-      // Top-level PARA entries have no folder note — the dashboard is their content.
       void this.plugin.openFolderDashboard(config);
     };
     header.addEventListener("click", openNode);

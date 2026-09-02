@@ -59,7 +59,6 @@
   opacity: 0.5;
 }
 
-.para-chevron,
 .para-folder-icon {
   display: inline-flex;
   color: var(--text-muted);
@@ -81,11 +80,6 @@
   padding: 0 var(--size-4-1);
 }
 
-.para-chevron:focus-visible {
-  outline: 2px solid var(--interactive-accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-s);
-}
 .para-add-button {
   display: inline-flex;
   align-items: center;
