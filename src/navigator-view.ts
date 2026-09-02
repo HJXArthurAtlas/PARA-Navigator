@@ -223,6 +223,21 @@ export class NavigatorView extends ItemView {
     const hasChildren = folder.children.some(
       (child) => child instanceof TFolder || child.path !== folderNotePath
     );
+    const open = () => void this.openFolderNote(folder);
+    row.addEventListener("click", open);
+    row.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter" || evt.key === " ") {
+        evt.preventDefault();
+        open();
+      }
+    });
+
+    this.addIconButton(row, "plus", `New note in ${folder.name}`, () => this.startCreate(folder.path));
+    row.addEventListener("contextmenu", (evt) => {
+      evt.preventDefault();
+      this.showFolderNodeMenu(evt, folder, hasChildren);
+    });
+
     if (!hasChildren) {
       chevron.addClass("para-chevron-hidden");
       return;
@@ -267,20 +282,6 @@ export class NavigatorView extends ItemView {
       }
     });
 
-    const open = () => void this.openFolderNote(folder);
-    row.addEventListener("click", open);
-    row.addEventListener("keydown", (evt) => {
-      if (evt.key === "Enter" || evt.key === " ") {
-        evt.preventDefault();
-        open();
-      }
-    });
-
-    this.addIconButton(row, "plus", `New note in ${folder.name}`, () => this.startCreate(folder.path));
-    row.addEventListener("contextmenu", (evt) => {
-      evt.preventDefault();
-      this.showFolderNodeMenu(evt, folder);
-    });
   }
 
   /** A plain file node. Markdown leaves can be converted into folder notes. */
@@ -323,12 +324,14 @@ export class NavigatorView extends ItemView {
     menu.showAtMouseEvent(evt);
   }
 
-  private showFolderNodeMenu(evt: MouseEvent, folder: TFolder): void {
+  private showFolderNodeMenu(evt: MouseEvent, folder: TFolder, hasChildren: boolean): void {
     const parentPath = folder.parent?.path ?? "";
     const menu = new Menu();
-    menu.addItem((item) =>
-      item.setTitle("创建下一级文件").setIcon("file-plus").onClick(() => this.startCreate(folder.path))
-    );
+    if (hasChildren) {
+      menu.addItem((item) =>
+        item.setTitle("创建下一级文件").setIcon("file-plus").onClick(() => this.startCreate(folder.path))
+      );
+    }
     menu.addItem((item) =>
       item.setTitle("在下方创建文件").setIcon("file-plus").onClick(() => this.startCreate(parentPath, folder.name))
     );
