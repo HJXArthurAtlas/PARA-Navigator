@@ -109,7 +109,11 @@ export class NavigatorView extends ItemView {
     );
 
     const chevron = header.createSpan("para-chevron");
-    setIcon(chevron, isExpanded ? "chevron-down" : "chevron-right");
+    if (exists && abstract.children.length > 0) {
+      setIcon(chevron, isExpanded ? "chevron-down" : "chevron-right");
+    } else {
+      chevron.addClass("para-chevron-hidden");
+    }
 
     const icon = header.createSpan("para-folder-icon");
     setIcon(icon, config.icon);
@@ -157,7 +161,7 @@ export class NavigatorView extends ItemView {
     }
 
     const toggle = () => {
-      if (!exists) return;
+      if (!exists || abstract.children.length === 0) return;
       if (this.collapsed.has(config.id)) {
         this.collapsed.delete(config.id);
       } else {
@@ -230,6 +234,14 @@ export class NavigatorView extends ItemView {
 
     const chevron = createSpan("para-tree-chevron");
     row.insertBefore(chevron, row.firstChild);
+    const folderNotePath = `${folder.path}/${folder.name}.md`;
+    const hasChildren = folder.children.some(
+      (child) => child instanceof TFolder || child.path !== folderNotePath
+    );
+    if (!hasChildren) {
+      chevron.addClass("para-chevron-hidden");
+      return;
+    }
     const isExpanded = this.expandedSubfolders.has(folder.path);
     setIcon(chevron, isExpanded ? "chevron-down" : "chevron-right");
     chevron.setAttr("role", "button");
@@ -287,6 +299,9 @@ export class NavigatorView extends ItemView {
     const isMarkdown = file.extension === "md";
     const row = this.renderRow(parent, file.basename, depth, `Open ${file.name}`);
     this.attachRowDrag(row, file.parent?.path ?? "", file.name, file.path, false);
+    // Placeholder keeps labels aligned with rows that have a real chevron.
+    const placeholder = createSpan("para-tree-chevron para-chevron-hidden");
+    row.insertBefore(placeholder, row.firstChild);
 
     const open = () => void this.app.workspace.getLeaf("tab").openFile(file);
     row.addEventListener("click", open);
@@ -306,7 +321,6 @@ export class NavigatorView extends ItemView {
 
   private renderRow(parent: HTMLElement, label: string, depth: number, ariaLabel: string): HTMLElement {
     const row = parent.createDiv("para-tree-row");
-    row.style.paddingLeft = `${8 + depth * 12}px`;
     row.setAttr("role", "treeitem");
     row.setAttr("tabindex", "0");
     row.setAttr("aria-label", ariaLabel);
@@ -341,7 +355,6 @@ export class NavigatorView extends ItemView {
 
   private renderCreateInput(depth: number): HTMLElement {
     const row = createDiv("para-tree-row para-tree-editing");
-    row.style.paddingLeft = `${8 + depth * 12}px`;
     const input = row.createEl("input", { cls: "para-tree-input" });
     input.setAttr("type", "text");
     input.setAttr("placeholder", "note name (a/b works)");

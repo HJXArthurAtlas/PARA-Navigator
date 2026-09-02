@@ -118,12 +118,12 @@
 }
 
 .para-folder-body {
-  margin-left: 11px;
+  margin-left: 16px;
   border-left: 1px solid var(--background-modifier-border);
 }
 
 .para-tree-children {
-  margin-left: 11px;
+  margin-left: 12px;
   border-left: 1px solid var(--background-modifier-border);
 }
 
@@ -131,7 +131,7 @@
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
-  padding: 2px var(--size-4-2);
+  padding: 2px var(--size-4-2) 2px var(--size-4-1);
   border-radius: var(--radius-s);
   cursor: pointer;
   color: var(--text-normal);
@@ -155,6 +155,9 @@
 }
 .para-tree-chevron {
   display: inline-flex;
+  width: 16px;
+  flex: 0 0 16px;
+  justify-content: center;
   color: var(--text-faint);
   cursor: pointer;
   border-radius: var(--radius-s);
@@ -167,6 +170,9 @@
 .para-tree-chevron:focus-visible {
   outline: 2px solid var(--interactive-accent);
   outline-offset: 2px;
+}
+.para-chevron-hidden {
+  visibility: hidden;
 }
 .para-tree-editing {
   cursor: default;
