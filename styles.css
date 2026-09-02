@@ -79,28 +79,34 @@
 
 .para-icon-tabs {
   display: flex;
-  gap: var(--size-4-2);
+  gap: var(--size-4-4);
   margin-bottom: var(--size-4-2);
+  border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.para-icon-tab {
+.para-icon-tabs button.para-icon-tab,
+.para-icon-tabs button.para-icon-tab.is-active {
   border: none;
   background: transparent;
+  background-color: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  padding: var(--size-4-1) var(--size-4-3);
-  border-radius: var(--radius-s);
+  padding: var(--size-4-1) var(--size-4-1);
+  border-radius: 0;
+  box-shadow: none;
+  font-weight: 400;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
 }
 
-.para-icon-tab:hover {
-  background-color: var(--background-modifier-hover);
+.para-icon-tabs button.para-icon-tab:hover {
   color: var(--text-normal);
+  background-color: transparent;
 }
 
-.para-icon-tab.is-active {
-  background-color: var(--background-modifier-hover);
-  color: var(--text-normal);
-  font-weight: 600;
+.para-icon-tabs button.para-icon-tab.is-active {
+  color: var(--text-accent);
+  border-bottom-color: var(--interactive-accent);
 }
 
 .para-icon-search {

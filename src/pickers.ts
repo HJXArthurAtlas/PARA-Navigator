@@ -183,16 +183,7 @@ export class ColorPickerModal extends Modal {
     input.setAttr("placeholder", "#e5b567 · rgb(229,181,103) · gold");
     input.value = value;
 
-    const confirm = new Setting(contentEl).addButton((button) =>
-      button
-        .setButtonText("确定")
-        .setCta()
-        .onClick(() => {
-          if (!parsed) return;
-          this.onChoose(parsed);
-          this.close();
-        })
-    );
+    let confirmBtn: import("obsidian").ButtonComponent | null = null;
 
     const apply = (next: string): void => {
       value = next;
@@ -200,7 +191,7 @@ export class ColorPickerModal extends Modal {
       parsed = parseColor(next);
       preview.style.backgroundColor = parsed ?? "transparent";
       input.toggleClass("is-invalid", next.length > 0 && parsed === null);
-      confirm.components[0].setDisabled(parsed === null);
+      confirmBtn?.setDisabled(parsed === null);
       if (parsed && /^#[0-9a-fA-F]{6}$/.test(parsed)) gradientPicker?.setValue(parsed);
     };
 
@@ -225,6 +216,15 @@ export class ColorPickerModal extends Modal {
       tile.setAttr("aria-label", swatch);
       tile.addEventListener("click", () => apply(swatch));
     }
+
+    new Setting(contentEl).addButton((button) => {
+      confirmBtn = button;
+      button.setButtonText("确定").onClick(() => {
+        if (!parsed) return;
+        this.onChoose(parsed);
+        this.close();
+      });
+    });
 
     apply(value || "#c8a26a");
     input.focus();
