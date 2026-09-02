@@ -1,8 +1,8 @@
 import { ItemView, Menu, Notice, TFile, TFolder, setIcon } from "obsidian";
 import type { WorkspaceLeaf } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
+import type { CreateKind } from "./main";
 import type { ParaFolderConfig } from "./settings";
-import { CreateEntryModal } from "./create-modal";
 
 export const VIEW_TYPE_NAVIGATOR = "para-navigator";
 
@@ -11,6 +11,8 @@ export class NavigatorView extends ItemView {
   private readonly collapsed = new Set<string>();
   /** Paths of expanded subfolders — survives full re-renders */
   private readonly expandedSubfolders = new Set<string>();
+  /** Pending inline creation target, if any */
+  private creating: { basePath: string; kind: CreateKind } | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: ParaNavigatorPlugin) {
     super(leaf);
@@ -109,16 +111,15 @@ export class NavigatorView extends ItemView {
       add.setAttr("tabindex", "0");
       add.setAttr("aria-label", `Create folder or note in ${config.name}`);
       add.setAttr("data-tooltip-position", "top");
-      const openModal = () => this.openCreateModal(config.path);
       add.addEventListener("click", (evt) => {
         evt.stopPropagation();
-        openModal();
+        this.showCreateMenu(config.path, evt);
       });
       add.addEventListener("keydown", (evt) => {
         if (evt.key === "Enter" || evt.key === " ") {
           evt.preventDefault();
           evt.stopPropagation();
-          openModal();
+          this.showCreateMenu(config.path, evt);
         }
       });
     }
@@ -207,22 +208,22 @@ export class NavigatorView extends ItemView {
             toggle();
           }
         });
-        row.addEventListener("contextmenu", (evt) => {
-          evt.preventDefault();
-          const menu = new Menu();
-          menu.addItem((item) =>
-            item
-              .setTitle("New folder")
-              .setIcon("folder-plus")
-              .onClick(() => this.openCreateModal(child.path))
-          );
-          menu.addItem((item) =>
-            item
-              .setTitle("New note")
-              .setIcon("file-plus")
-              .onClick(() => this.openCreateModal(child.path))
-          );
-          menu.showAtMouseEvent(evt);
+        const add = row.createSpan("para-add-button");
+        setIcon(add, "plus");
+        add.setAttr("role", "button");
+        add.setAttr("tabindex", "0");
+        add.setAttr("aria-label", `Create folder or note in ${child.name}`);
+        add.setAttr("data-tooltip-position", "top");
+        add.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          this.showCreateMenu(child.path, evt);
+        });
+        add.addEventListener("keydown", (evt) => {
+          if (evt.key === "Enter" || evt.key === " ") {
+            evt.preventDefault();
+            evt.stopPropagation();
+            this.showCreateMenu(child.path, evt);
+          }
         });
       } else if (child instanceof TFile && child.extension === "md") {
         const row = this.renderRow(parent, child.basename, depth, `Open ${child.basename}`);
@@ -236,6 +237,80 @@ export class NavigatorView extends ItemView {
         });
       }
     }
+    if (this.creating?.basePath === folder.path) {
+      parent.appendChild(this.renderCreateInput(depth));
+    }
+  }
+  private renderCreateInput(depth: number): HTMLElement {
+    const creating = this.creating;
+    const row = createDiv("para-tree-row para-tree-editing");
+    row.style.paddingLeft = `${8 + depth * 12}px`;
+    const input = row.createEl("input", { cls: "para-tree-input" });
+    input.setAttr("type", "text");
+    input.setAttr(
+      "placeholder",
+      creating?.kind === "note" ? "note name (folder/note works too)" : "folder/subfolder"
+    );
+    input.setAttr("aria-label", creating?.kind === "note" ? "New note name" : "New folder name");
+
+    const cancel = () => {
+      this.creating = null;
+      this.render();
+    };
+    input.addEventListener("keydown", (evt) => {
+      if (evt.key === "Enter") {
+        evt.preventDefault();
+        const value = input.value.trim();
+        const target = this.creating;
+        this.creating = null;
+        if (target && value.length > 0) {
+          void this.createAndReveal(target.basePath, value, target.kind);
+        } else {
+          this.render();
+        }
+      } else if (evt.key === "Escape") {
+        evt.preventDefault();
+        cancel();
+      }
+    });
+    input.addEventListener("blur", () => {
+      if (this.creating) cancel();
+    });
+    return row;
+  }
+
+  private showCreateMenu(basePath: string, evt: MouseEvent | KeyboardEvent): void {
+    const menu = new Menu();
+    menu.addItem((item) =>
+      item
+        .setTitle("New folder")
+        .setIcon("folder-plus")
+        .onClick(() => this.startCreate(basePath, "folder"))
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle("New note")
+        .setIcon("file-plus")
+        .onClick(() => this.startCreate(basePath, "note"))
+    );
+    if (evt instanceof MouseEvent) {
+      menu.showAtMouseEvent(evt);
+    } else {
+      const target = evt.target;
+      const rect = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+      menu.showAtPosition({ x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + 4 });
+    }
+  }
+
+  private startCreate(basePath: string, kind: CreateKind): void {
+    this.creating = { basePath, kind };
+    // Make sure the target's children are visible so the input row shows.
+    this.expandedSubfolders.add(basePath);
+    const topLevel = this.plugin.settings.folders.find((folder) => folder.path === basePath);
+    if (topLevel) this.collapsed.delete(topLevel.id);
+    this.render();
+    const input = this.containerEl.querySelector<HTMLInputElement>(".para-tree-input");
+    input?.focus();
   }
 
   private renderRow(parent: HTMLElement, label: string, depth: number, ariaLabel: string): HTMLElement {
@@ -247,13 +322,8 @@ export class NavigatorView extends ItemView {
     row.createSpan({ cls: "para-tree-label", text: label });
     return row;
   }
-  private openCreateModal(basePath: string): void {
-    new CreateEntryModal(this.app, basePath, (relativePath, kind) => {
-      void this.createAndReveal(basePath, relativePath, kind);
-    }).open();
-  }
-
-  private async createAndReveal(basePath: string, relativePath: string, kind: "folder" | "note"): Promise<void> {
+  
+  private async createAndReveal(basePath: string, relativePath: string, kind: CreateKind): Promise<void> {
     const created = await this.plugin.createEntry(basePath, relativePath, kind);
     if (!created) return;
 

@@ -3,10 +3,10 @@ import { NavigatorView, VIEW_TYPE_NAVIGATOR } from "./navigator-view";
 import { StatsView, VIEW_TYPE_STATS } from "./stats-view";
 import { ParaNavigatorSettingTab } from "./settings-tab";
 import { baseFileContent } from "./bases";
-import type { CreateKind } from "./create-modal";
 import { detectParaPaths } from "./para-detect";
 import { DEFAULT_SETTINGS } from "./settings";
 import type { ParaFolderConfig, ParaNavigatorSettings } from "./settings";
+export type CreateKind = "folder" | "note";
 
 export default class ParaNavigatorPlugin extends Plugin {
   settings!: ParaNavigatorSettings;
