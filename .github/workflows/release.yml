@@ -42,13 +42,13 @@ jobs:
           tag="${GITHUB_REF#refs/tags/}"
           min_app=$(jq -r .minAppVersion manifest.json)
           tmp=$(mktemp)
-          jq --arg v "$tag" --arg m "$min_app" '.[$v] = $m' versions.json > "$tmp" && mv "$tmp" versions.json
+          jq --tab --arg v "$tag" --arg m "$min_app" '.[$v] = $m' versions.json > "$tmp" && mv "$tmp" versions.json
           if ! git diff --quiet versions.json; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add versions.json
             git commit -m "chore: register $tag in versions.json [skip ci]"
-            git push
+            git push origin HEAD:main
           fi
 
       - name: Generate artifact attestation
