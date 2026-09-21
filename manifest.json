@@ -5,5 +5,6 @@
   "minAppVersion": "1.9.0",
   "description": "PARA-based sidebar navigator with per-folder Bases tables and statistics dashboards.",
   "author": "arthuratlas",
+  "authorUrl": "https://github.com/HJXArthurAtlas",
   "isDesktopOnly": false
 }
