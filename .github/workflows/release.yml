@@ -1,0 +1,71 @@
+name: Release Obsidian plugin
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify tag matches manifest version
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          ver=$(jq -r .version manifest.json)
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::Tag $tag does not match manifest.json version $ver — bump manifest.json first."
+            exit 1
+          fi
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Use Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build plugin
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Update versions.json
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          min_app=$(jq -r .minAppVersion manifest.json)
+          tmp=$(mktemp)
+          jq --arg v "$tag" --arg m "$min_app" '.[$v] = $m' versions.json > "$tmp" && mv "$tmp" versions.json
+          if ! git diff --quiet versions.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add versions.json
+            git commit -m "chore: register $tag in versions.json [skip ci]"
+            git push
+          fi
+
+      - name: Generate artifact attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+
+          gh release create "$tag" \
+            --title="$tag" \
+            --draft \
+            main.js manifest.json styles.css

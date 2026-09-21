@@ -40,6 +40,8 @@ const context = await esbuild.context({
 });
 
 const syncToVault = () => {
+  // CI runners have no local vault; release builds must not touch the filesystem.
+  if (process.env.CI === "true") return;
   mkdirSync(pluginDir, { recursive: true });
   for (const file of ["main.js", "manifest.json", "styles.css"]) {
     copyFileSync(file, join(pluginDir, file));
