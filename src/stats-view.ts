@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, TFolder, moment, setIcon } from "obsidian";
+import { ItemView, MarkdownRenderer, TFolder, setIcon } from "obsidian";
 import type { TFile, WorkspaceLeaf, ViewStateResult } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
 import { renderIconValue } from "./pickers";
@@ -161,7 +161,11 @@ export class StatsView extends ItemView {
         const link = nameCell.createEl("a", { text: file.basename, cls: "internal-link" });
         link.setAttr("aria-label", `Open ${file.basename}`);
         link.addEventListener("click", () => this.plugin.openFileReusingTab(file));
-        row.createEl("td", { text: moment(file.stat.mtime).format("YYYY-MM-DD HH:mm") });
+        const modified = new Date(file.stat.mtime);
+        const pad = (n: number) => String(n).padStart(2, "0");
+        row.createEl("td", {
+          text: `${modified.getFullYear()}-${pad(modified.getMonth() + 1)}-${modified.getDate()} ${pad(modified.getHours())}:${pad(modified.getMinutes())}`,
+        });
         row.createEl("td", { text: String(words) });
       }
     }

@@ -13,7 +13,8 @@ export default class ParaNavigatorPlugin extends Plugin {
   private prevNewFileFolderPath: unknown = null;
 
   async onload(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data = (await this.loadData()) as Partial<ParaNavigatorSettings> | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
 
     // Resolve categories to whatever the vault actually uses ("Inbox", "0-Inbox", …).
     // Read-only: detection never creates, renames, or deletes vault content.
@@ -69,7 +70,7 @@ export default class ParaNavigatorPlugin extends Plugin {
       .getLeavesOfType("markdown")
       .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
     if (existing) {
-      this.app.workspace.revealLeaf(existing);
+      void this.app.workspace.revealLeaf(existing);
       // revealLeaf alone does not reliably activate already-visible leaves.
       this.app.workspace.setActiveLeaf(existing, { focus: true });
     } else {
@@ -161,7 +162,7 @@ export default class ParaNavigatorPlugin extends Plugin {
       await left.setViewState({ type: VIEW_TYPE_NAVIGATOR, active: true });
       leaf = left;
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 
   /**
@@ -185,7 +186,7 @@ export default class ParaNavigatorPlugin extends Plugin {
       .getLeavesOfType(VIEW_TYPE_STATS)
       .find((leaf) => leaf.getViewState().state?.folderPath === folder.path);
     if (existing) {
-      this.app.workspace.revealLeaf(existing);
+      await this.app.workspace.revealLeaf(existing);
       this.app.workspace.setActiveLeaf(existing, { focus: true });
       return;
     }
@@ -197,6 +198,6 @@ export default class ParaNavigatorPlugin extends Plugin {
       active: true,
       state: { folderPath: folder.path, name: folder.name, icon: folder.icon },
     });
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
   }
 }

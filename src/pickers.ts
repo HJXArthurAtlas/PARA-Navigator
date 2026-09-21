@@ -38,7 +38,7 @@ const EMOJIS: [string, string][] = [
 ];
 
 /** Emoji values are stored as plain glyphs; icon ids are kebab-case ASCII. */
-export const isEmojiValue = (value: string): boolean => /[^\x00-\x7F]/.test(value);
+export const isEmojiValue = (value: string): boolean => /[^\x20-\x7F]/.test(value);
 
 /** Renders either an emoji glyph or a lucide/plugin icon into the element. */
 export function renderIconValue(el: HTMLElement, value: string): void {
@@ -152,10 +152,9 @@ const COLOR_PALETTE = [
 
 /** Accepts hex/rgb(a)/hsl(a)/CSS color names; returns the normalized value or null. */
 function parseColor(value: string): string | null {
-  const probe = document.createElement("span");
-  probe.style.color = "";
-  probe.style.color = value.trim();
-  return probe.style.color ? probe.style.color : null;
+  const probe = createSpan();
+  probe.setCssStyles({ color: value.trim() });
+  return probe.style.color || null;
 }
 
 /** Generic destructive-action confirmation. */
@@ -180,7 +179,7 @@ export class ConfirmModal extends Modal {
       .addButton((button) =>
         button
           .setButtonText(this.confirmText)
-          .setWarning()
+          .setDestructive()
           .onClick(() => {
             this.onConfirm();
             this.close();
