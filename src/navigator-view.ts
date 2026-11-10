@@ -1,4 +1,4 @@
-import { ItemView, Menu, Notice, FileSystemAdapter, TFile, TFolder, setIcon } from "obsidian";
+import { ItemView, Menu, Notice, FileSystemAdapter, Platform, TFile, TFolder, setIcon } from "obsidian";
 import type { TAbstractFile, WorkspaceLeaf } from "obsidian";
 import type ParaNavigatorPlugin from "./main";
 import { ColorPickerModal, ConfirmModal, IconPickerModal, renderIconValue } from "./pickers";
@@ -326,6 +326,7 @@ export class NavigatorView extends ItemView {
         .setIcon("bar-chart-3")
         .onClick(() => void this.plugin.openFolderDashboard(config))
     );
+    this.addRevealInSystemItem(menu, config.path);
     const defaultIcon = DEFAULT_SETTINGS.folders.find((f) => f.id === config.id)?.icon ?? "folder";
     this.addAppearanceItems(menu, config.path, {
       set: (id) => {
@@ -373,6 +374,7 @@ export class NavigatorView extends ItemView {
     menu.addItem((item) =>
       item.setTitle("复制相对路径").setIcon("clipboard-list").onClick(() => this.copyPath(folder.path, false))
     );
+    this.addRevealInSystemItem(menu, folder.path);
     this.addAppearanceItems(menu, folder.path, this.nodeIconAccessor(folder.path));
     menu.showAtMouseEvent(evt);
   }
@@ -414,8 +416,22 @@ export class NavigatorView extends ItemView {
     menu.addItem((item) =>
       item.setTitle("复制相对路径").setIcon("clipboard-list").onClick(() => this.copyPath(file.path, false))
     );
+    this.addRevealInSystemItem(menu, file.path);
     this.addAppearanceItems(menu, file.path, this.nodeIconAccessor(file.path));
     menu.showAtMouseEvent(evt);
+  }
+
+  /** Reveal the vault item in the OS file manager: Finder on macOS, Explorer on Windows. */
+  private addRevealInSystemItem(menu: Menu, path: string): void {
+    if (!Platform.isDesktopApp) return;
+    const title = Platform.isMacOS
+      ? "在 Finder 中显示"
+      : Platform.isWin
+        ? "在文件资源管理器中显示"
+        : "在系统文件管理器中显示";
+    menu.addItem((item) =>
+      item.setTitle(title).setIcon("folder-search").onClick(() => this.app.showInFolder(path))
+    );
   }
 
   /** Delete goes through a confirmation; the file still lands in the system trash. */
