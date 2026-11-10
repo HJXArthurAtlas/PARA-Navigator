@@ -1,7 +1,7 @@
 {
   "id": "para-navigator",
   "name": "PARA Navigator",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "minAppVersion": "1.13.0",
   "description": "PARA-based sidebar navigator with per-folder Bases tables and statistics dashboards.",
   "author": "arthuratlas",
